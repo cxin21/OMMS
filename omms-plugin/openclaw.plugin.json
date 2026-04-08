@@ -1,0 +1,125 @@
+{
+  "id": "omms",
+  "name": "OMMS Memory System",
+  "description": "Intelligent memory management with vector search, user profiles, and knowledge graphs for OpenClaw",
+  "version": "1.3.0",
+  "author": "OMMS Team",
+  "license": "MIT",
+  "homepage": "https://github.com/omms-team/openclaw-omms",
+  "repository": "https://github.com/omms-team/openclaw-omms",
+  "bugs": "https://github.com/omms-team/openclaw-omms/issues",
+  "keywords": ["openclaw", "memory", "vector", "ai", "agent"],
+  "engines": {
+    "openclaw": ">=2026.3.24"
+  },
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "enableAutoCapture": {
+        "type": "boolean",
+        "default": true,
+        "description": "Automatically capture important content from conversations"
+      },
+      "enableAutoRecall": {
+        "type": "boolean",
+        "default": true,
+        "description": "Automatically inject relevant memories before prompt build"
+      },
+      "enableLLMExtraction": {
+        "type": "boolean",
+        "default": true,
+        "description": "Use LLM for memory extraction (more accurate, requires LLM API)"
+      },
+      "enableGraphEngine": {
+        "type": "boolean",
+        "default": false,
+        "description": "Enable knowledge graph for relationship tracking"
+      },
+      "enableProfile": {
+        "type": "boolean",
+        "default": true,
+        "description": "Build and maintain user profiles"
+      },
+      "enableVectorSearch": {
+        "type": "boolean",
+        "default": true,
+        "description": "Enable semantic vector search (requires embedding provider)"
+      },
+      "maxMemoriesPerSession": {
+        "type": "number",
+        "default": 50,
+        "description": "Maximum memories to capture per session"
+      },
+      "embedding": {
+        "type": "object",
+        "description": "Embedding service configuration (OpenAI-compatible API)",
+        "properties": {
+          "model": {
+            "type": "string",
+            "default": "BAAI/bge-m3",
+            "description": "Embedding model name (e.g., BAAI/bge-m3, text-embedding-3-small)"
+          },
+          "dimensions": {
+            "type": "number",
+            "default": 1024,
+            "description": "Embedding vector dimensions (1024 for BGE-M3, 1536 for OpenAI)"
+          },
+          "baseURL": {
+            "type": "string",
+            "default": "https://api.siliconflow.cn/v1",
+            "description": "API base URL (e.g., https://api.siliconflow.cn/v1)"
+          },
+          "apiKey": {
+            "type": "string",
+            "description": "API key for the embedding service"
+          }
+        },
+        "required": ["baseURL", "apiKey", "model"]
+      },
+      "search": {
+        "type": "object",
+        "description": "Search configuration",
+        "properties": {
+          "vectorWeight": {
+            "type": "number",
+            "default": 0.7,
+            "description": "Weight for vector search results (0-1)"
+          },
+          "keywordWeight": {
+            "type": "number",
+            "default": 0.3,
+            "description": "Weight for keyword search results (0-1)"
+          },
+          "limit": {
+            "type": "number",
+            "default": 10,
+            "description": "Maximum search results"
+          }
+        }
+      },
+      "logging": {
+        "type": "object",
+        "description": "Logging configuration",
+        "properties": {
+          "level": {
+            "type": "string",
+            "default": "info",
+            "enum": ["debug", "info", "warn", "error"],
+            "description": "Global log level"
+          },
+          "output": {
+            "type": "string",
+            "default": "console",
+            "enum": ["console", "file", "both"],
+            "description": "Log output destination"
+          },
+          "filePath": {
+            "type": "string",
+            "description": "Log file path (required if output is file/both)"
+          }
+        }
+      }
+    },
+    "additionalProperties": true
+  }
+}
