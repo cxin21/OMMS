@@ -1,7 +1,159 @@
 # OMMS 安装配置文档
 
-**版本**: 2.5.0
-**日期**: 2026-04-11
+**版本**: 3.0.0
+**日期**: 2026-04-12
+
+---
+
+## 九、Dreaming 机制配置
+
+Dreaming 是一个实验性的智能记忆巩固系统，需要在配置中明确启用。
+
+### 9.1 基础配置
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "omms": {
+        "config": {
+          "dreaming": {
+            "enabled": false,
+            "schedule": {
+              "enabled": true,
+              "time": "02:00",
+              "timezone": "Asia/Shanghai"
+            },
+            "memoryThreshold": {
+              "enabled": true,
+              "minMemories": 50,
+              "maxAgeHours": 24
+            },
+            "sessionTrigger": {
+              "enabled": true,
+              "afterSessions": 10
+            },
+            "promotion": {
+              "minScore": 0.7,
+              "weights": {
+                "recallFrequency": 0.25,
+                "relevance": 0.20,
+                "diversity": 0.15,
+                "recency": 0.15,
+                "consolidation": 0.15,
+                "conceptualRichness": 0.10
+              }
+            },
+            "output": {
+              "path": "~/.openclaw/memory/DREAMS.md",
+              "maxReflections": 5,
+              "maxThemes": 10
+            },
+            "logging": {
+              "level": "info",
+              "consoleOutput": true,
+              "fileOutput": true,
+              "outputPath": "~/.openclaw/omms-dreaming.log",
+              "maxFileSize": "10MB",
+              "maxFiles": 5
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### 9.2 配置参数详解
+
+#### 9.2.1 基础设置
+
+| 参数 | 类型 | 说明 | 默认值 |
+|------|------|------|--------|
+| `enabled` | boolean | 是否启用 Dreaming 机制 | `false` |
+| `schedule.enabled` | boolean | 是否启用定时调度 | `true` |
+| `schedule.time` | string | 每天定时触发时间 | `"02:00"` |
+| `schedule.timezone` | string | 时区 | `"Asia/Shanghai"` |
+
+#### 9.2.2 触发条件
+
+| 参数 | 类型 | 说明 | 默认值 |
+|------|------|------|--------|
+| `memoryThreshold.enabled` | boolean | 是否启用记忆阈值触发 | `true` |
+| `memoryThreshold.minMemories` | number | 最小记忆数量阈值 | `50` |
+| `memoryThreshold.maxAgeHours` | number | 记忆最大年龄（小时） | `24` |
+| `sessionTrigger.enabled` | boolean | 是否启用会话触发 | `true` |
+| `sessionTrigger.afterSessions` | number | 会话触发数量 | `10` |
+
+#### 9.2.3 提升评分
+
+| 参数 | 类型 | 说明 | 默认值 |
+|------|------|------|--------|
+| `promotion.minScore` | number | 最低提升分数 | `0.7` |
+| `promotion.weights.recallFrequency` | number | 召回频率权重 | `0.25` |
+| `promotion.weights.relevance` | number | 相关性权重 | `0.20` |
+| `promotion.weights.diversity` | number | 多样性权重 | `0.15` |
+| `promotion.weights.recency` | number | 新近度权重 | `0.15` |
+| `promotion.weights.consolidation` | number | 整合度权重 | `0.15` |
+| `promotion.weights.conceptualRichness` | number | 概念丰富度权重 | `0.10` |
+
+#### 9.2.4 输出配置
+
+| 参数 | 类型 | 说明 | 默认值 |
+|------|------|------|--------|
+| `output.path` | string | DREAMS.md 文件路径 | `"~/.openclaw/memory/DREAMS.md"` |
+| `output.maxReflections` | number | 最大反思数量 | `5` |
+| `output.maxThemes` | number | 最大主题数量 | `10` |
+
+#### 9.2.5 日志配置
+
+| 参数 | 类型 | 说明 | 默认值 |
+|------|------|------|--------|
+| `logging.level` | string | 日志级别 | `"info"` |
+| `logging.consoleOutput` | boolean | 控制台输出 | `true` |
+| `logging.fileOutput` | boolean | 文件输出 | `true` |
+| `logging.outputPath` | string | 日志文件路径 | `"~/.openclaw/omms-dreaming.log"` |
+| `logging.maxFileSize` | string | 最大文件大小 | `"10MB"` |
+| `logging.maxFiles` | number | 保留文件数量 | `5` |
+
+### 9.3 启用 Dreaming 机制
+
+1. 在 `~/.openclaw/openclaw.json` 中添加配置
+2. 重启 OpenClaw Gateway
+
+```bash
+# 查看当前配置
+cat ~/.openclaw/openclaw.json
+
+# 重启 OpenClaw
+openclaw gateway restart
+```
+
+### 9.4 使用 Dreaming 工具
+
+```bash
+# 查看 Dreaming 状态
+omms_dreaming status
+
+# 手动启动 Dreaming
+omms_dreaming start
+
+# 停止 Dreaming
+omms_dreaming stop
+```
+
+### 9.5 查看 DREAMS.md 文件
+
+```bash
+cat ~/.openclaw/memory/DREAMS.md
+```
+
+DREAMS.md 包含以下信息：
+- 记忆数量统计
+- 提取的主题
+- 生成的反思
+- 阶段处理信息
 
 ---
 

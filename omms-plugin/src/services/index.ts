@@ -5,3 +5,4 @@ export { graphEngine, GraphEngine } from "./graph.js";
 export { memoryService, MemoryService } from "./memory.js";
 export { EmbeddingService, getEmbeddingService } from "./embedding.js";
 export type { EmbeddingConfig } from "./embedding.js";
+export { getDreamingService, DreamingService } from "./dreaming.js";

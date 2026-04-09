@@ -357,7 +357,8 @@ export class MemoryService {
         const embeddingService = getEmbeddingService();
         if (embeddingService) {
           const queryVector = await embeddingService.embedOne(query);
-          if (queryVector.length === 1024) {
+          const expectedDimensions = this.config.embedding?.dimensions || 1024;
+          if (queryVector.length === expectedDimensions) {
             searchResults = await persistence.vectorSearch(queryVector, limit * 2);
             this.logger.info("[RECALL] Vector search results", {
               method: "recall",
@@ -374,7 +375,7 @@ export class MemoryService {
               returns: "RecallResult",
               agentId: options?.agentId,
               sessionId: options?.sessionId,
-              data: { expected: 1024, actual: queryVector.length },
+              data: { expected: expectedDimensions, actual: queryVector.length },
             });
           }
         }
@@ -544,6 +545,22 @@ export class MemoryService {
     return memories.slice(0, options?.limit);
   }
 
+  async delete(id: string): Promise<void> {
+    const memory = IN_MEMORY_STORE.get(id);
+    if (memory) {
+      IN_MEMORY_STORE.delete(id);
+      await persistence.delete(id);
+      this.logger.debug("Memory deleted", { 
+        id, 
+        type: memory.type, 
+        scope: memory.scope,
+        content: memory.content.slice(0, 50) 
+      });
+    } else {
+      this.logger.warn("Attempted to delete non-existent memory", { id });
+    }
+  }
+
   async consolidate(params?: {
     agentId?: string;
     sessionId?: string;
@@ -674,6 +691,9 @@ export class MemoryService {
       session: memories.filter(m => m.scope === "session").length,
       agent: memories.filter(m => m.scope === "agent").length,
       global: memories.filter(m => m.scope === "global").length,
+      working: memories.filter(m => m.block === "working").length,
+      core: memories.filter(m => m.block === "core").length,
+      archived: memories.filter(m => m.block === "archived").length,
       byType: { fact: 0, preference: 0, decision: 0, error: 0, learning: 0, relationship: 0 },
       avgImportance: 0,
       avgScopeScore: 0,

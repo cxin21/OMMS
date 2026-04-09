@@ -6,7 +6,12 @@ import { configureLLMExtractor } from "./services/llm.js";
 import { initLogger, getLogger } from "./services/logger.js";
 import { webServer } from "./web-server.js";
 import { graphEngine } from "./services/graph.js";
-import type { OMMSConfig } from "./types/index.js";
+import { createApiHandlers } from "./api.js";
+import { getDreamingService } from "./services/dreaming.js";
+import { ommsDreamingTool } from "./tools/dreaming.js";
+import type { OMMSConfig, MemoryType } from "./types/index.js";
+
+export { createApiHandlers };
 
 export default definePluginEntry({
   id: "omms",
@@ -134,7 +139,7 @@ export default definePluginEntry({
 
           const memory = await memoryService.store({
             content: params.content,
-            type: ((params.type as any) || "fact") as any,
+            type: (params.type as MemoryType) || "fact",
             importance: params.importance ?? 0.5,
           });
 
@@ -394,22 +399,25 @@ export default definePluginEntry({
       }
     });
 
-    api.registerHook("agent_end", async (event: any) => {
+    api.registerHook("session:compact:after", async (event: any) => {
       const hookLogger = getLogger();
-      hookLogger.info("[CAPTURE] ====== agent_end HOOK START ======");
+      hookLogger.info("[CAPTURE] ====== session:compact:after HOOK START ======");
       hookLogger.info("[CAPTURE] Hook invocation", {
-        name: "agent_end",
+        name: "session:compact:after",
         params: {
           sessionId: event.sessionId,
           agentId: event.agentId,
           messagesCount: event.messages?.length || 0,
+          messageCount: event.context?.messageCount,
+          compactedCount: event.context?.compactedCount,
+          summaryLength: event.context?.summaryLength,
         }
       });
 
       const hookConfig = (api.pluginConfig || {}) as OMMSConfig;
       if (!hookConfig.enableAutoCapture) {
         hookLogger.info("[CAPTURE] Auto-capture disabled, skipping", {
-          method: "agent_end",
+          method: "session:compact:after",
           returns: "void"
         });
         return;
@@ -421,7 +429,7 @@ export default definePluginEntry({
         const assistantMessages = messages.filter((m: any) => m.role === "assistant");
 
         hookLogger.debug("[CAPTURE] Messages breakdown", {
-          method: "agent_end",
+          method: "session:compact:after",
           params: {
             total: messages.length,
             user: userMessages.length,
@@ -429,9 +437,9 @@ export default definePluginEntry({
           }
         });
 
-        for (const msg of userMessages.slice(-3)) {
+        for (const msg of userMessages.slice.slice(-3)) {
           hookLogger.debug("[CAPTURE] User message sample", {
-            method: "agent_end",
+            method: "session:compact:after",
             params: {
               content: String(msg.content).slice(0, 80),
             }
@@ -439,7 +447,7 @@ export default definePluginEntry({
         }
 
         hookLogger.info("[CAPTURE] Starting extraction", {
-          method: "agent_end",
+          method: "session:compact:after",
           params: {
             messagesToProcess: messages.length,
             usingLLM: hookConfig.enableLLMExtraction,
@@ -449,7 +457,7 @@ export default definePluginEntry({
         const facts = await memoryService.extractFromMessages(messages);
 
         hookLogger.info("[CAPTURE] Extraction result", {
-          method: "agent_end",
+          method: "session:compact:after",
           returns: {
             factsExtracted: facts.length,
           }
@@ -457,7 +465,7 @@ export default definePluginEntry({
 
         for (const fact of facts.slice(0, 10)) {
           hookLogger.debug("[CAPTURE] Extracted fact", {
-            method: "agent_end",
+            method: "session:compact:after",
             params: {
               type: fact.type,
               confidence: fact.confidence,
@@ -477,7 +485,7 @@ export default definePluginEntry({
           });
           storedCount++;
           hookLogger.debug("[CAPTURE] Memory stored", {
-            method: "agent_end",
+            method: "session:compact:after",
             params: {
               id: memory.id,
               type: memory.type,
@@ -488,14 +496,14 @@ export default definePluginEntry({
         }
 
         hookLogger.info("[CAPTURE] Storage complete", {
-          method: "agent_end",
+          method: "session:compact:after",
           returns: {
             stored: storedCount,
           }
         });
 
         hookLogger.info("[CAPTURE] Starting consolidation", {
-          method: "agent_end"
+          method: "session:compact:after"
         });
         const consolidation = await memoryService.consolidate({
           agentId: event.agentId,
@@ -504,7 +512,7 @@ export default definePluginEntry({
         });
 
         hookLogger.info("[CAPTURE] Consolidation complete", {
-          method: "agent_end",
+          method: "session:compact:after",
           returns: {
             archived: consolidation.archived,
             deleted: consolidation.deleted,
@@ -514,7 +522,7 @@ export default definePluginEntry({
 
         if (hookConfig.enableGraphEngine) {
           hookLogger.info("[GRAPH] Processing knowledge graph for new memories", {
-            method: "agent_end"
+            method: "session:compact:after"
           });
           try {
             const memories = await memoryService.getAll({ agentId: event.agentId });
@@ -525,26 +533,26 @@ export default definePluginEntry({
             }
 
             hookLogger.info("[GRAPH] Knowledge graph updated", {
-              method: "agent_end",
+              method: "session:compact:after",
               returns: {
                 processedMemories: recentMemories.length,
               }
             });
           } catch (error) {
             hookLogger.error("[GRAPH] Failed to process knowledge graph", {
-              method: "agent_end",
+              method: "session:compact:after",
               error: String(error)
             });
           }
         }
 
-        hookLogger.info("[CAPTURE] ====== agent_end HOOK END ======", {
-          method: "agent_end",
+        hookLogger.info("[CAPTURE] ====== session:compact:after HOOK END ======", {
+          method: "session:compact:after",
           returns: "void"
         });
       } catch (error) {
         hookLogger.error("[CAPTURE] Hook failed", {
-          method: "agent_end",
+                   method: "session:compact:after",
           params: {
             sessionId: event.sessionId,
             agentId: event.agentId,
@@ -554,7 +562,52 @@ export default definePluginEntry({
       }
     });
 
-    logger.info("OMMS v2.5.0 plugin enabled");
+    api.registerHook("message:received", async (event: any) => {
+      const hookLogger = getLogger();
+      const channelId = event.context?.channelId;
+      const channelType = event.context?.from;
+      const role = event.context?.role;
+      
+      hookLogger.info("[MESSAGE] Received", {
+        channelType,
+        channelId,
+        role,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    api.registerHook("message:sent", async (event: any) => {
+      const hookLogger = getLogger();
+      const channelId = event.context?.channelId;
+      const to = event.context?.to;
+      const success = event.context?.success;
+      
+      hookLogger.info("[MESSAGE] Sent", {
+        channelId,
+        to,
+        success,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // Initialize Dreaming mechanism
+    if (config.dreaming?.enabled) {
+      try {
+        const dreaming = getDreamingService(config.dreaming as any); // 类型断言
+        logger.info("Dreaming mechanism initialized", { config: { 
+          enabled: config.dreaming.enabled,
+          schedule: config.dreaming.schedule?.enabled ? config.dreaming.schedule?.time : "disabled",
+          memoryThreshold: config.dreaming.memoryThreshold?.enabled ? `${config.dreaming.memoryThreshold?.minMemories} memories` : "disabled",
+          sessionTrigger: config.dreaming.sessionTrigger?.enabled ? `${config.dreaming.sessionTrigger?.afterSessions} sessions` : "disabled"
+        } });
+      } catch (error) {
+        logger.error("Failed to initialize Dreaming mechanism", error as Error);
+      }
+    } else {
+      logger.info("Dreaming mechanism disabled", { config: config.dreaming?.enabled });
+    }
+
+    logger.info("OMMS v2.9.0 plugin enabled");
     if (config.enableVectorSearch && config.embedding) {
       logger.info("Vector search enabled", { model: config.embedding.model });
     } else {

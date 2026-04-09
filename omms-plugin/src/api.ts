@@ -1,6 +1,9 @@
 import { memoryService, IN_MEMORY_STORE } from "./services/memory.js";
 import { getLogger } from "./services/logger.js";
 import { persistence } from "./services/persistence.js";
+import { scorer } from "./services/scorer.js";
+import { getDreamingService } from "./services/dreaming.js";
+import type { DreamingStatus, DreamingResult } from "./types/dreaming.js";
 
 const logger = getLogger();
 
@@ -43,35 +46,54 @@ export function createApiHandlers() {
 
     async getMemories(params: { query?: string; type?: string; scope?: string; limit?: number }): Promise<ApiResponse> {
       try {
+        const safeParams = params || {};
         let memories;
-        if (params.query) {
-          const result = await memoryService.recall(params.query, { limit: params.limit || 100 });
-          memories = result.memories;
+        if (safeParams.query) {
+          const queryLower = safeParams.query.toLowerCase();
+          const allMemories = memoryService.getAll({ limit: safeParams.limit || 100 });
+          memories = allMemories.filter(memory => 
+            memory.content.toLowerCase().includes(queryLower) ||
+            memory.tags.some(tag => tag.toLowerCase().includes(queryLower))
+          );
         } else {
-          memories = memoryService.getAll({ limit: params.limit || 100 });
+          memories = memoryService.getAll({ limit: safeParams.limit || 100 });
         }
 
-        if (params.type && params.type !== "all") {
-          memories = memories.filter((m) => m.type === params.type);
+        if (safeParams.type && safeParams.type !== "all") {
+          memories = memories.filter(memory => memory.type === safeParams.type);
         }
-        if (params.scope && params.scope !== "all") {
-          memories = memories.filter((m) => m.scope === params.scope);
+
+        if (safeParams.scope && safeParams.scope !== "all") {
+          memories = memories.filter(memory => memory.scope === safeParams.scope);
+        }
+
+        if (safeParams.limit && safeParams.limit > 0 && memories.length > safeParams.limit) {
+          memories = memories.slice(0, safeParams.limit);
         }
 
         return {
           success: true,
           data: {
-            memories: memories.map((m) => ({
-              id: m.id,
-              content: m.content,
-              type: m.type,
-              importance: m.importance,
-              scope: m.scope,
-              block: m.block,
-              createdAt: m.createdAt,
-              updatedAt: m.updatedAt,
-              accessedAt: m.accessedAt,
-              updateCount: m.updateCount,
+            memories: memories.map(memory => ({
+              id: memory.id,
+              content: memory.content,
+              type: memory.type,
+              importance: memory.importance,
+              scopeScore: memory.scopeScore,
+              scope: memory.scope,
+              block: memory.block,
+              ownerAgentId: memory.ownerAgentId,
+              agentId: memory.agentId,
+              sessionId: memory.sessionId,
+              tags: memory.tags,
+              recallByAgents: memory.recallByAgents,
+              usedByAgents: memory.usedByAgents,
+              createdAt: memory.createdAt,
+              updatedAt: memory.updatedAt,
+              accessedAt: memory.accessedAt,
+              recallCount: memory.recallCount,
+              updateCount: memory.updateCount,
+              metadata: memory.metadata,
             })),
             total: memories.length,
           },
@@ -105,9 +127,21 @@ export function createApiHandlers() {
 
     async deleteMemory(id: string): Promise<ApiResponse> {
       try {
-        IN_MEMORY_STORE.delete(id);
-        await persistence.delete(id);
-        logger.info("Memory deleted via API", { id });
+        logger.debug("API: deleteMemory called", { id });
+        const memory = memoryService.getAll({}).find(m => m.id === id);
+        if (!memory) {
+          logger.warn("API: Memory not found for deletion", { id });
+          return { success: false, error: "Memory not found" };
+        }
+
+        await memoryService.delete(id);
+        logger.info("Memory deleted via API", { 
+          id, 
+          type: memory.type, 
+          scope: memory.scope,
+          content: memory.content.slice(0, 50) 
+        });
+        
         return { success: true, data: { id } };
       } catch (error) {
         logger.error("API deleteMemory failed", error as Error);
@@ -117,24 +151,48 @@ export function createApiHandlers() {
 
     async promoteMemory(id: string): Promise<ApiResponse> {
       try {
+        logger.debug("API: promoteMemory called", { id });
         const memories = memoryService.getAll({});
         const memory = memories.find(m => m.id === id);
         
         if (!memory) {
+          logger.warn("API: Memory not found for promotion", { id });
           return { success: false, error: "Memory not found" };
         }
 
-        let newScope = memory.scope;
-        if (memory.scope === "session") {
-          newScope = "agent";
-        } else if (memory.scope === "agent") {
-          newScope = "global";
-        } else {
-          return { success: true, data: { id, scope: memory.scope, message: "Already at global scope" } };
+        const newScope = scorer.shouldPromote(memory);
+        if (!newScope) {
+          logger.info("API: Memory not eligible for promotion", { 
+            id,
+            scope: memory.scope,
+            scopeScore: memory.scopeScore,
+            recallCount: memory.recallCount,
+            usedByAgents: memory.usedByAgents?.length
+          });
+          return { 
+            success: true, 
+            data: { 
+              id, 
+              scope: memory.scope, 
+              message: "Not eligible for promotion",
+              reason: {
+                scope: memory.scope,
+                scopeScore: memory.scopeScore,
+                recallCount: memory.recallCount,
+                usedByAgents: memory.usedByAgents?.length
+              }
+            } 
+          };
         }
 
         const updated = await memoryService.update(id, { scope: newScope });
-        logger.info("Memory promoted via API", { id, oldScope: memory.scope, newScope });
+        logger.info("Memory promoted via API", { 
+          id, 
+          oldScope: memory.scope, 
+          newScope,
+          scopeScore: memory.scopeScore,
+          recallCount: memory.recallCount
+        });
         
         return { success: true, data: { id, scope: newScope } };
       } catch (error) {
@@ -147,18 +205,18 @@ export function createApiHandlers() {
       return {
         success: true,
         data: {
-          version: "2.5.0",
+          version: "2.9.0",
           llm: {
             provider: "openai-compatible",
             model: "abab6.5s-chat",
             baseURL: "https://api.minimax.chat/v1",
-            apiKey: "",
+            apiKey: "***",
           },
           embedding: {
             model: "BAAI/bge-m3",
             dimensions: 1024,
             baseURL: "https://api.siliconflow.cn/v1",
-            apiKey: "",
+            apiKey: "***",
           },
           features: {
             autoCapture: true,
@@ -168,6 +226,51 @@ export function createApiHandlers() {
           },
         },
       };
+    },
+
+    async getDreamingStatus(): Promise<ApiResponse<DreamingStatus>> {
+      try {
+        logger.debug("API: getDreamingStatus called");
+        const dreaming = getDreamingService();
+        const status = dreaming.getStatus();
+        return {
+          success: true,
+          data: status,
+        };
+      } catch (error) {
+        logger.error("API getDreamingStatus failed", error as Error);
+        return { success: false, error: String(error) };
+      }
+    },
+
+    async startDreaming(): Promise<ApiResponse<DreamingResult>> {
+      try {
+        logger.debug("API: startDreaming called");
+        const dreaming = getDreamingService();
+        const result = await dreaming.start();
+        return {
+          success: true,
+          data: result,
+        };
+      } catch (error) {
+        logger.error("API startDreaming failed", error as Error);
+        return { success: false, error: String(error) };
+      }
+    },
+
+    async stopDreaming(): Promise<ApiResponse> {
+      try {
+        logger.debug("API: stopDreaming called");
+        const dreaming = getDreamingService();
+        dreaming.stop();
+        return {
+          success: true,
+          data: { message: "Dreaming stopped" },
+        };
+      } catch (error) {
+        logger.error("API stopDreaming failed", error as Error);
+        return { success: false, error: String(error) };
+      }
     },
 
     async saveConfig(config: {

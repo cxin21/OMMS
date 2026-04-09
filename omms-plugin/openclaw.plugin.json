@@ -2,7 +2,7 @@
   "id": "omms",
   "name": "OMMS Memory System",
   "description": "Intelligent memory management with vector search, user profiles, and knowledge graphs for OpenClaw",
-  "version": "2.5.0",
+  "version": "3.0.0",
   "author": "cxin21",
   "license": "MIT",
   "homepage": "https://github.com/omms-team/openclaw-omms",
@@ -266,6 +266,180 @@
             "type": "boolean",
             "default": true,
             "description": "Boost scope score on recall"
+          }
+        }
+      },
+      "dreaming": {
+        "type": "object",
+        "description": "Dreaming mechanism configuration (experimental)",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether to enable the Dreaming mechanism"
+          },
+          "schedule": {
+            "type": "object",
+            "description": "Scheduled trigger configuration",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to enable scheduled triggering"
+              },
+              "time": {
+                "type": "string",
+                "default": "02:00",
+                "description": "Daily trigger time (HH:MM format)"
+              },
+              "timezone": {
+                "type": "string",
+                "default": "Asia/Shanghai",
+                "description": "Timezone for scheduled trigger"
+              }
+            }
+          },
+          "memoryThreshold": {
+            "type": "object",
+            "description": "Memory threshold trigger configuration",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to enable memory threshold triggering"
+              },
+              "minMemories": {
+                "type": "number",
+                "default": 50,
+                "description": "Minimum number of memories to trigger"
+              },
+              "maxAgeHours": {
+                "type": "number",
+                "default": 24,
+                "description": "Maximum memory age in hours"
+              }
+            }
+          },
+          "sessionTrigger": {
+            "type": "object",
+            "description": "Session count trigger configuration",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to enable session count triggering"
+              },
+              "afterSessions": {
+                "type": "number",
+                "default": 10,
+                "description": "Number of sessions after which to trigger"
+              }
+            }
+          },
+          "promotion": {
+            "type": "object",
+            "description": "Memory promotion configuration",
+            "properties": {
+              "minScore": {
+                "type": "number",
+                "default": 0.7,
+                "description": "Minimum score for memory promotion"
+              },
+              "weights": {
+                "type": "object",
+                "description": "Promotion score weights",
+                "properties": {
+                  "recallFrequency": {
+                    "type": "number",
+                    "default": 0.25,
+                    "description": "Recall frequency weight"
+                  },
+                  "relevance": {
+                    "type": "number",
+                    "default": 0.20,
+                    "description": "Relevance weight"
+                  },
+                  "diversity": {
+                    "type": "number",
+                    "default": 0.15,
+                    "description": "Diversity weight"
+                  },
+                  "recency": {
+                    "type": "number",
+                    "default": 0.15,
+                    "description": "Recency weight"
+                  },
+                  "consolidation": {
+                    "type": "number",
+                    "default": 0.15,
+                    "description": "Consolidation weight"
+                  },
+                  "conceptualRichness": {
+                    "type": "number",
+                    "default": 0.10,
+                    "description": "Conceptual richness weight"
+                  }
+                }
+              }
+            }
+          },
+          "output": {
+            "type": "object",
+            "description": "Output configuration",
+            "properties": {
+              "path": {
+                "type": "string",
+                "default": "~/.openclaw/memory/DREAMS.md",
+                "description": "Path to DREAMS.md file"
+              },
+              "maxReflections": {
+                "type": "number",
+                "default": 5,
+                "description": "Maximum number of reflections per run"
+              },
+              "maxThemes": {
+                "type": "number",
+                "default": 10,
+                "description": "Maximum number of themes per run"
+              }
+            }
+          },
+          "logging": {
+            "type": "object",
+            "description": "Logging configuration",
+            "properties": {
+              "level": {
+                "type": "string",
+                "default": "info",
+                "description": "Log level",
+                "enum": ["debug", "info", "warn", "error"]
+              },
+              "consoleOutput": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to output logs to console"
+              },
+              "fileOutput": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to output logs to file"
+              },
+              "outputPath": {
+                "type": "string",
+                "default": "~/.openclaw/omms-dreaming.log",
+                "description": "Path to log file"
+              },
+              "maxFileSize": {
+                "type": "string",
+                "default": "10MB",
+                "description": "Maximum log file size"
+              },
+              "maxFiles": {
+                "type": "number",
+                "default": 5,
+                "description": "Maximum number of log files to keep"
+              }
+            }
           }
         }
       }

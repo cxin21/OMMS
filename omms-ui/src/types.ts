@@ -24,6 +24,9 @@ export interface Memory {
   recallCount: number;
   updateCount: number;
   metadata?: Record<string, unknown>;
+  summary?: string;
+  keywords?: string[];
+  embedding?: number[];
 }
 
 export interface MemoryStats {
@@ -46,6 +49,13 @@ export interface LogEntry {
   level: 'debug' | 'info' | 'warn' | 'error';
   message: string;
   data?: Record<string, unknown>;
+  method?: string;
+  params?: Record<string, unknown>;
+  returns?: unknown;
+  agentId?: string;
+  sessionId?: string;
+  memoryId?: string;
+  error?: string;
 }
 
 export interface LogStats {

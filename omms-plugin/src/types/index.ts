@@ -118,6 +118,9 @@ export interface MemoryStats {
   session: number;
   agent: number;
   global: number;
+  working: number;
+  core: number;
+  archived: number;
   byType: Record<MemoryType, number>;
   avgImportance: number;
   avgScopeScore: number;
@@ -212,5 +215,46 @@ export interface OMMSConfig {
     minSimilarity?: number;
     boostOnRecall?: boolean;
     boostScopeScoreOnRecall?: boolean;
+  };
+  dreaming?: {
+    enabled?: boolean;
+    schedule?: {
+      enabled?: boolean;
+      time?: string;
+      timezone?: string;
+    };
+    memoryThreshold?: {
+      enabled?: boolean;
+      minMemories?: number;
+      maxAgeHours?: number;
+    };
+    sessionTrigger?: {
+      enabled?: boolean;
+      afterSessions?: number;
+    };
+    promotion?: {
+      minScore?: number;
+      weights?: {
+        recallFrequency?: number;
+        relevance?: number;
+        diversity?: number;
+        recency?: number;
+        consolidation?: number;
+        conceptualRichness?: number;
+      };
+    };
+    output?: {
+      path?: string;
+      maxReflections?: number;
+      maxThemes?: number;
+    };
+    logging?: {
+      level?: 'debug' | 'info' | 'warn' | 'error';
+      consoleOutput?: boolean;
+      fileOutput?: boolean;
+      outputPath?: string;
+      maxFileSize?: string;
+      maxFiles?: number;
+    };
   };
 }

@@ -1,7 +1,7 @@
 # OMMS - OpenClaw Memory Management System
 
-**版本**: 2.5.0
-**日期**: 2026-04-11
+**版本**: 3.0.0
+**日期**: 2026-04-12
 
 ---
 
@@ -20,6 +20,20 @@ OMMS (OpenClaw Memory Management System) 是一个智能记忆管理系统，为
 - **跨Agent追踪** - 追踪记忆被不同Agent的使用情况
 - **持久化存储** - LanceDB 文件持久化，重启不丢失
 - **Web UI** - 可视化管理面板
+- **Dreaming 机制** - 实验性智能记忆巩固系统，模拟人类睡眠时的记忆整合过程
+
+### Dreaming 机制
+
+**三阶段记忆巩固：**
+- **Light 阶段**（整理）：使用双评分系统排序短期记忆
+- **Deep 阶段**（提升）：基于多维度信号评估记忆价值
+- **REM 阶段**（反思）：使用 LLM 提取主题和反思，写入 DREAMS.md
+
+**触发方式：**
+- **自动调度**：每天凌晨定时触发
+- **记忆阈值**：达到最小记忆数量触发
+- **会话触发**：完成一定会话次数触发
+- **手动控制**：CLI 命令或 Web UI 按钮
 
 ### 设计理念
 
@@ -92,6 +106,20 @@ openclaw gateway start
 | `omms_stats` | 查看统计 |
 | `omms_logs` | 查看日志 |
 | `omms_graph` | 知识图谱查询 |
+| `omms_dreaming` | Dreaming 机制控制 |
+
+### Dreaming 工具使用
+
+```bash
+# 查看 Dreaming 状态
+omms_dreaming status
+
+# 手动启动 Dreaming
+omms_dreaming start
+
+# 停止 Dreaming
+omms_dreaming stop
+```
 
 ### Web UI
 
@@ -101,6 +129,7 @@ openclaw gateway start
 - **概览** - 统计卡片、类型分布图、作用域分布图
 - **记忆列表** - 搜索、筛选、提升/删除
 - **活动日志** - 日志统计、完整日志
+- **Dreaming** - 梦境机制控制、状态监控、日志查看
 - **设置** - 配置 LLM/Embedding、功能开关
 
 ---
@@ -144,10 +173,12 @@ omms-plugin/
 │   │   ├── scorer.ts   # 评分服务
 │   │   ├── vector-store.ts  # 向量存储
 │   │   ├── persistence.ts   # 持久化
+│   │   ├── dreaming.ts  # Dreaming 机制
 │   │   └── ...
 │   ├── tools/         # 工具
 │   │   ├── recall.ts
 │   │   ├── write.ts
+│   │   ├── dreaming.ts
 │   │   └── ...
 │   ├── types/         # 类型定义
 │   ├── api.ts         # API

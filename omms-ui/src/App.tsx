@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Brain, Database, Activity, Search, Settings, RefreshCw, Trash2, ArrowUp, TrendingUp, Users, Clock, BarChart3, Info } from 'lucide-react';
+import { Brain, Database, Activity, Search, Settings, RefreshCw, Trash2, ArrowUp, TrendingUp, Users, Clock, BarChart3, Info, Download, ChevronDown, ChevronUp, Edit3, Check, X } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import type { Memory, MemoryStats, LogEntry, OMMSConfig } from './types';
 
@@ -35,6 +35,8 @@ const SCOPE_LABELS: Record<string, string> = {
   global: '全局',
 };
 
+const SCOPE_ORDER = ['session', 'agent', 'global'];
+
 const BLOCK_LABELS: Record<string, string> = {
   working: '工作',
   session: '会话',
@@ -61,6 +63,7 @@ export default function App() {
   const [filterType, setFilterType] = useState<string>('all');
   const [filterScope, setFilterScope] = useState<string>('all');
   const [filterBlock, setFilterBlock] = useState<string>('all');
+  const [selectedMemories, setSelectedMemories] = useState<Set<string>>(new Set());
 
   const fetchData = useCallback(async (isManual = false) => {
     if (isManual) setRefreshing(true);
@@ -125,12 +128,47 @@ export default function App() {
     fetchData();
   };
 
-  const handlePromote = async (id: string) => {
+  const handlePromote = async (id: string, targetScope?: string) => {
     await fetch(`${API_BASE}/promote`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ id, targetScope }),
     });
+    fetchData();
+  };
+
+  const handleBatchPromote = async (targetScope: string) => {
+    if (selectedMemories.size === 0) return;
+    
+    await Promise.all(
+      Array.from(selectedMemories).map(id =>
+        fetch(`${API_BASE}/promote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, targetScope }),
+        })
+      )
+    );
+    
+    setSelectedMemories(new Set());
+    fetchData();
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedMemories.size === 0) return;
+    if (!confirm(`确定删除选中的 ${selectedMemories.size} 条记忆？`)) return;
+    
+    await Promise.all(
+      Array.from(selectedMemories).map(id =>
+        fetch(`${API_BASE}/delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        })
+      )
+    );
+    
+    setSelectedMemories(new Set());
     fetchData();
   };
 
@@ -201,7 +239,7 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">OMMS Dashboard</h1>
-              <p className="text-sm text-green-600 font-medium">● 已连接 · 智能记忆管理系统</p>
+              <p className="text-sm text-green-600 font-medium">● 已连接 · 智能记忆管理系统 v2.9.0</p>
             </div>
           </div>
           <button onClick={() => fetchData(true)} className={`p-3 hover:bg-gray-100 rounded-xl transition-all ${refreshing ? 'animate-spin' : ''}`} title="刷新数据">
@@ -333,14 +371,28 @@ export default function App() {
               {logs.length > 0 ? (
                 <div className="space-y-3">
                   {logs.slice(0, 8).map((log, i) => (
-                    <div key={i} className="flex items-center gap-3 text-sm p-3 hover:bg-gray-50 rounded-lg transition-colors">
-                      <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
-                        log.level === 'error' ? 'bg-red-100 text-red-700' :
-                        log.level === 'warn' ? 'bg-yellow-100 text-yellow-700' :
-                        log.level === 'debug' ? 'bg-gray-100 text-gray-700' : 'bg-blue-100 text-blue-700'
-                      }`}>{log.level.toUpperCase()}</span>
-                      <span className="text-gray-500">{new Date(log.timestamp).toLocaleString()}</span>
-                      <span className="text-gray-900 flex-1">{log.message}</span>
+                    <div key={i} className="flex flex-col items-start gap-2 text-sm p-3 hover:bg-gray-50 rounded-lg transition-colors">
+                      <div className="flex items-center gap-3 w-full">
+                        <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
+                          log.level === 'error' ? 'bg-red-100 text-red-700' :
+                          log.level === 'warn' ? 'bg-yellow-100 text-yellow-700' :
+                          log.level === 'debug' ? 'bg-gray-100 text-gray-700' : 'bg-blue-100 text-blue-700'
+                        }`}>{log.level.toUpperCase()}</span>
+                        <span className="text-gray-500">{new Date(log.timestamp).toLocaleString()}</span>
+                        <span className="text-gray-900 flex-1">{log.message}</span>
+                      </div>
+                      {log.method && (
+                        <div className="ml-12 text-gray-500 text-xs">
+                          <span className="font-semibold">Method:</span> {log.method}
+                        </div>
+                      )}
+                      {(log.agentId || log.sessionId || log.memoryId) && (
+                        <div className="ml-12 text-gray-500 text-xs">
+                          {log.agentId && <span className="mr-2"><span className="font-semibold">Agent:</span> {log.agentId}</span>}
+                          {log.sessionId && <span className="mr-2"><span className="font-semibold">Session:</span> {log.sessionId}</span>}
+                          {log.memoryId && <span className="mr-2"><span className="font-semibold">Memory:</span> {log.memoryId}</span>}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -388,6 +440,40 @@ export default function App() {
               </div>
             </div>
 
+            {selectedMemories.size > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <span className="text-blue-900 font-medium">已选择 {selectedMemories.size} 条记忆</span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleBatchPromote('agent')}
+                      className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm font-medium"
+                    >
+                      批量提升到 Agent 级
+                    </button>
+                    <button
+                      onClick={() => handleBatchPromote('global')}
+                      className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors text-sm font-medium"
+                    >
+                      批量提升到全局级
+                    </button>
+                    <button
+                      onClick={handleBatchDelete}
+                      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium"
+                    >
+                      批量删除
+                    </button>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedMemories(new Set())}
+                  className="p-2 hover:bg-blue-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-blue-600" />
+                </button>
+              </div>
+            )}
+
             <div className="space-y-4">
               {filteredMemories.length > 0 ? filteredMemories.map((memory) => (
                 <MemoryCard
@@ -395,6 +481,16 @@ export default function App() {
                   memory={memory}
                   onDelete={handleDelete}
                   onPromote={handlePromote}
+                  selected={selectedMemories.has(memory.id)}
+                  onSelect={selected => {
+                    const newSelected = new Set(selectedMemories);
+                    if (selected) {
+                      newSelected.add(memory.id);
+                    } else {
+                      newSelected.delete(memory.id);
+                    }
+                    setSelectedMemories(newSelected);
+                  }}
                 />
               )) : (
                 <div className="text-center py-16 bg-white rounded-2xl shadow-lg">
@@ -408,51 +504,7 @@ export default function App() {
         )}
 
         {activeTab === 'logs' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-2xl shadow-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">日志统计</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-4 bg-gray-50 rounded-xl">
-                  <div className="text-3xl font-bold text-gray-900">{logs.length}</div>
-                  <div className="text-sm text-gray-500 mt-1">总日志</div>
-                </div>
-                <div className="text-center p-4 bg-blue-50 rounded-xl">
-                  <div className="text-3xl font-bold text-blue-600">{logs.filter(l => l.level === 'info').length}</div>
-                  <div className="text-sm text-gray-500 mt-1">Info</div>
-                </div>
-                <div className="text-center p-4 bg-yellow-50 rounded-xl">
-                  <div className="text-3xl font-bold text-yellow-600">{logs.filter(l => l.level === 'warn').length}</div>
-                  <div className="text-sm text-gray-500 mt-1">Warning</div>
-                </div>
-                <div className="text-center p-4 bg-red-50 rounded-xl">
-                  <div className="text-3xl font-bold text-red-600">{logs.filter(l => l.level === 'error').length}</div>
-                  <div className="text-sm text-gray-500 mt-1">Error</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">完整日志</h3>
-              {logs.length > 0 ? (
-                <div className="space-y-2 font-mono text-sm max-h-[600px] overflow-y-auto">
-                  {logs.map((log, i) => (
-                    <div key={i} className="flex items-start gap-3 p-3 hover:bg-gray-50 rounded-lg transition-colors">
-                      <span className="text-gray-400 shrink-0">{new Date(log.timestamp).toLocaleString()}</span>
-                      <span className={`shrink-0 px-3 py-1 rounded-lg text-xs font-semibold ${
-                        log.level === 'error' ? 'bg-red-100 text-red-700' :
-                        log.level === 'warn' ? 'bg-yellow-100 text-yellow-700' :
-                        log.level === 'debug' ? 'bg-gray-100 text-gray-700' : 'bg-blue-100 text-blue-700'
-                      }`}>{log.level.toUpperCase()}</span>
-                      <span className="text-gray-900 flex-1">{log.message}</span>
-                      {log.data && <span className="text-gray-500 text-xs">{JSON.stringify(log.data)}</span>}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center text-gray-400 py-12">暂无日志</div>
-              )}
-            </div>
-          </div>
+          <LogsPage logs={logs} />
         )}
 
         {activeTab === 'settings' && config && (
@@ -487,12 +539,35 @@ function StatCard({ label, value, icon: Icon, color }: { label: string; value: n
   );
 }
 
-function MemoryCard({ memory, onDelete, onPromote }: { memory: Memory; onDelete: (id: string) => void; onPromote: (id: string) => void }) {
+function MemoryCard({ memory, onDelete, onPromote, selected, onSelect }: { 
+  memory: Memory; 
+  onDelete: (id: string) => void; 
+  onPromote: (id: string, targetScope?: string) => void;
+  selected: boolean;
+  onSelect: (selected: boolean) => void;
+}) {
+  const [showPromoteMenu, setShowPromoteMenu] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editContent, setEditContent] = useState(memory.content);
+
+  const currentScopeIndex = SCOPE_ORDER.indexOf(memory.scope);
+  const availableScopes = SCOPE_ORDER.slice(currentScopeIndex + 1);
+
+  const handleSaveEdit = async () => {
+    setEditing(false);
+  };
+
   return (
-    <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
+    <div className={`bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all ${selected ? 'ring-2 ring-blue-500' : ''}`}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={(e) => onSelect(e.target.checked)}
+              className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
             <span className="px-3 py-1 rounded-lg text-xs font-semibold text-white shadow-sm" style={{ backgroundColor: TYPE_COLORS[memory.type] }}>
               {TYPE_LABELS[memory.type]}
             </span>
@@ -504,7 +579,37 @@ function MemoryCard({ memory, onDelete, onPromote }: { memory: Memory; onDelete:
             </span>
           </div>
 
-          <p className="text-gray-900 text-base mb-4 leading-relaxed">{memory.content}</p>
+          {editing ? (
+            <div className="mb-4">
+              <textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[100px]"
+                rows={4}
+              />
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={handleSaveEdit}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium flex items-center gap-1"
+                >
+                  <Check className="w-4 h-4" />
+                  保存
+                </button>
+                <button
+                  onClick={() => {
+                    setEditing(false);
+                    setEditContent(memory.content);
+                  }}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm font-medium flex items-center gap-1"
+                >
+                  <X className="w-4 h-4" />
+                  取消
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-gray-900 text-base mb-4 leading-relaxed">{memory.content}</p>
+          )}
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-3">
@@ -535,6 +640,12 @@ function MemoryCard({ memory, onDelete, onPromote }: { memory: Memory; onDelete:
                 <div>
                   <span className="text-gray-500">当前Agent：</span>
                   <span className="font-semibold text-gray-900 ml-1">{memory.agentId}</span>
+                </div>
+              )}
+              {memory.sessionId && (
+                <div>
+                  <span className="text-gray-500">会话ID：</span>
+                  <span className="font-semibold text-gray-900 ml-1">{memory.sessionId}</span>
                 </div>
               )}
               <div>
@@ -589,15 +700,239 @@ function MemoryCard({ memory, onDelete, onPromote }: { memory: Memory; onDelete:
         </div>
 
         <div className="flex flex-col gap-2">
-          {memory.scope !== 'global' && (
-            <button onClick={() => onPromote(memory.id)} className="p-3 hover:bg-green-50 rounded-xl transition-colors group" title="提升级别">
-              <ArrowUp className="w-5 h-5 text-green-600 group-hover:scale-110 transition-transform" />
-            </button>
+          <button
+            onClick={() => setEditing(!editing)}
+            className="p-3 hover:bg-blue-50 rounded-xl transition-colors group"
+            title={editing ? "取消编辑" : "编辑记忆"}
+          >
+            <Edit3 className="w-5 h-5 text-blue-600 group-hover:scale-110 transition-transform" />
+          </button>
+
+          {availableScopes.length > 0 && (
+            <div className="relative">
+              <button
+                onClick={() => setShowPromoteMenu(!showPromoteMenu)}
+                className="p-3 hover:bg-green-50 rounded-xl transition-colors group"
+                title="提升级别"
+              >
+                <ArrowUp className="w-5 h-5 text-green-600 group-hover:scale-110 transition-transform" />
+              </button>
+
+              {showPromoteMenu && (
+                <div className="absolute right-0 top-full mt-2 bg-white rounded-xl shadow-xl border border-gray-200 py-2 min-w-[150px] z-10">
+                  {availableScopes.map((scope) => (
+                    <button
+                      key={scope}
+                      onClick={() => {
+                        onPromote(memory.id, scope);
+                        setShowPromoteMenu(false);
+                      }}
+                      className="w-full px-4 py-2 text-left hover:bg-gray-50 transition-colors text-sm font-medium text-gray-700"
+                    >
+                      提升到 {SCOPE_LABELS[scope]}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
+
           <button onClick={() => onDelete(memory.id)} className="p-3 hover:bg-red-50 rounded-xl transition-colors group" title="删除记忆">
             <Trash2 className="w-5 h-5 text-red-600 group-hover:scale-110 transition-transform" />
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function LogsPage({ logs }: { logs: LogEntry[] }) {
+  const [filterLevel, setFilterLevel] = useState<string>('all');
+  const [filterMethod, setFilterMethod] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedLogs, setExpandedLogs] = useState<Set<number>>(new Set());
+
+  const filteredLogs = logs.filter((log) => {
+    const matchLevel = filterLevel === 'all' || log.level === filterLevel;
+    const matchMethod = !filterMethod || log.method === filterMethod;
+    const matchSearch = !searchQuery || 
+      log.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (log.method && log.method.toLowerCase().includes(searchQuery.toLowerCase()));
+    return matchLevel && matchMethod && matchSearch;
+  });
+
+  const uniqueMethods = Array.from(new Set(logs.map(l => l.method).filter(Boolean)));
+
+  const handleExportLogs = () => {
+    const data = JSON.stringify(filteredLogs, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `omms-logs-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const levelCounts = {
+    total: logs.length,
+    info: logs.filter(l => l.level === 'info').length,
+    warn: logs.filter(l => l.level === 'warn').length,
+    error: logs.filter(l => l.level === 'error').length,
+    debug: logs.filter(l => l.level === 'debug').length,
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-2xl shadow-lg p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">日志统计</h3>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="text-center p-4 bg-gray-50 rounded-xl">
+            <div className="text-3xl font-bold text-gray-900">{levelCounts.total}</div>
+            <div className="text-sm text-gray-500 mt-1">总日志</div>
+          </div>
+          <div className="text-center p-4 bg-blue-50 rounded-xl">
+            <div className="text-3xl font-bold text-blue-600">{levelCounts.info}</div>
+            <div className="text-sm text-gray-500 mt-1">Info</div>
+          </div>
+          <div className="text-center p-4 bg-yellow-50 rounded-xl">
+            <div className="text-3xl font-bold text-yellow-600">{levelCounts.warn}</div>
+            <div className="text-sm text-gray-500 mt-1">Warning</div>
+          </div>
+          <div className="text-center p-4 bg-red-50 rounded-xl">
+            <div className="text-3xl font-bold text-red-600">{levelCounts.error}</div>
+            <div className="text-sm text-gray-500 mt-1">Error</div>
+          </div>
+          <div className="text-center p-4 bg-gray-100 rounded-xl">
+            <div className="text-3xl font-bold text-gray-600">{levelCounts.debug}</div>
+            <div className="text-sm text-gray-500 mt-1">Debug</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-lg p-4">
+        <div className="flex flex-wrap gap-4 items-center">
+          <div className="flex-1 min-w-[200px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="搜索日志..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+          <select value={filterLevel} onChange={(e) => setFilterLevel(e.target.value)} className="px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500">
+            <option value="all">所有级别</option>
+            <option value="info">Info</option>
+            <option value="warn">Warning</option>
+            <option value="error">Error</option>
+            <option value="debug">Debug</option>
+          </select>
+          <select value={filterMethod} onChange={(e) => setFilterMethod(e.target.value)} className="px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500">
+            <option value="">所有方法</option>
+            {uniqueMethods.map((method) => (
+              <option key={method} value={method}>{method}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleExportLogs}
+            className="px-4 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors flex items-center gap-2 font-medium"
+          >
+            <Download className="w-5 h-5" />
+            导出日志
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">完整日志 ({filteredLogs.length} 条)</h3>
+          <div className="text-sm text-gray-500">
+            显示 {filteredLogs.length} 条日志
+          </div>
+        </div>
+        {filteredLogs.length > 0 ? (
+          <div className="space-y-2 font-mono text-sm max-h-[600px] overflow-y-auto">
+            {filteredLogs.map((log, i) => {
+              const isExpanded = expandedLogs.has(i);
+              return (
+                <div key={i} className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div
+                    onClick={() => {
+                      const newExpanded = new Set(expandedLogs);
+                      if (isExpanded) {
+                        newExpanded.delete(i);
+                      } else {
+                        newExpanded.add(i);
+                      }
+                      setExpandedLogs(newExpanded);
+                    }}
+                    className="flex items-start gap-3 p-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
+                    <span className="text-gray-400 shrink-0">{new Date(log.timestamp).toLocaleString()}</span>
+                    <span className={`shrink-0 px-3 py-1 rounded-lg text-xs font-semibold ${
+                      log.level === 'error' ? 'bg-red-100 text-red-700' :
+                      log.level === 'warn' ? 'bg-yellow-100 text-yellow-700' :
+                      log.level === 'debug' ? 'bg-gray-100 text-gray-700' : 'bg-blue-100 text-blue-700'
+                    }`}>{log.level.toUpperCase()}</span>
+                    <span className="text-gray-900 flex-1">{log.message}</span>
+                    {isExpanded ? (
+                      <ChevronUp className="w-4 h-4 text-gray-400 shrink-0" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+                    )}
+                  </div>
+                  
+                  {isExpanded && (
+                    <div className="px-3 pb-3 bg-gray-50 border-t border-gray-200">
+                      {log.method && (
+                        <div className="text-gray-500 text-xs mb-2">
+                          <span className="font-semibold">Method:</span> {log.method}
+                        </div>
+                      )}
+                      {((typeof log.params !== 'undefined' && log.params !== null) || (typeof log.returns !== 'undefined' && log.returns !== null)) && (
+                        <div className="text-gray-500 text-xs space-y-1 mb-2">
+                          {typeof log.params !== 'undefined' && log.params !== null && (
+                            <div>
+                              <span className="font-semibold">Params:</span> {JSON.stringify(log.params)}
+                            </div>
+                          )}
+                          {typeof log.returns !== 'undefined' && log.returns !== null && (
+                            <div>
+                              <span className="font-semibold">Returns:</span> {JSON.stringify(log.returns as any)}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {(log.agentId || log.sessionId || log.memoryId) && (
+                        <div className="text-gray-500 text-xs mb-2">
+                          {log.agentId && <span className="mr-2"><span className="font-semibold">Agent:</span> {log.agentId}</span>}
+                          {log.sessionId && <span className="mr-2"><span className="font-semibold">Session:</span> {log.sessionId}</span>}
+                          {log.memoryId && <span className="mr-2"><span className="font-semibold">Memory:</span> {log.memoryId}</span>}
+                        </div>
+                      )}
+                      {log.error && (
+                        <div className="text-red-500 text-xs mb-2">
+                          <span className="font-semibold">Error:</span> {log.error}
+                        </div>
+                      )}
+                      {log.data && (
+                        <div className="text-gray-500 text-xs">
+                          <span className="font-semibold">Data:</span> {JSON.stringify(log.data)}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-center text-gray-400 py-12">暂无日志</div>
+        )}
       </div>
     </div>
   );
