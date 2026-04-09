@@ -5,6 +5,13 @@ export interface LogEntry {
   level: LogLevel;
   message: string;
   data?: unknown;
+  method?: string;
+  params?: Record<string, unknown>;
+  returns?: unknown;
+  agentId?: string;
+  sessionId?: string;
+  memoryId?: string;
+  error?: string;
 }
 
 const LEVEL_PRIORITY: Record<LogLevel, number> = {
@@ -40,32 +47,47 @@ export class Logger {
     if (config.filePath) this.filePath = config.filePath;
   }
 
-  debug(message: string, data?: unknown): void {
+  debug(message: string, data?: unknown | { data?: unknown; method?: string; params?: Record<string, unknown>; returns?: unknown; agentId?: string; sessionId?: string; memoryId?: string; error?: string }): void {
     this.log("debug", message, data);
   }
 
-  info(message: string, data?: unknown): void {
+  info(message: string, data?: unknown | { data?: unknown; method?: string; params?: Record<string, unknown>; returns?: unknown; agentId?: string; sessionId?: string; memoryId?: string; error?: string }): void {
     this.log("info", message, data);
   }
 
-  warn(message: string, data?: unknown): void {
+  warn(message: string, data?: unknown | { data?: unknown; method?: string; params?: Record<string, unknown>; returns?: unknown; agentId?: string; sessionId?: string; memoryId?: string; error?: string }): void {
     this.log("warn", message, data);
   }
 
-  error(message: string, data?: unknown): void {
+  error(message: string, data?: unknown | { data?: unknown; method?: string; params?: Record<string, unknown>; returns?: unknown; agentId?: string; sessionId?: string; memoryId?: string; error?: string }): void {
     this.log("error", message, data);
   }
 
-  private log(level: LogLevel, message: string, data?: unknown): void {
+  private log(level: LogLevel, message: string, data?: unknown | { data?: unknown; method?: string; params?: Record<string, unknown>; returns?: unknown; agentId?: string; sessionId?: string; memoryId?: string; error?: string }): void {
     if (LEVEL_PRIORITY[level] < LEVEL_PRIORITY[this.level]) {
       return;
+    }
+
+    let options: { data?: unknown; method?: string; params?: Record<string, unknown>; returns?: unknown; agentId?: string; sessionId?: string; memoryId?: string; error?: string } = {};
+
+    if (data !== undefined && data !== null) {
+      if (typeof data === "object" && !Array.isArray(data)) {
+        // 如果是对象且不是数组，检查是否有 options 属性
+        if ("method" in data || "params" in data || "returns" in data || "agentId" in data || "sessionId" in data || "memoryId" in data || "error" in data) {
+          options = data as any;
+        } else {
+          options.data = data;
+        }
+      } else {
+        options.data = data;
+      }
     }
 
     const entry: LogEntry = {
       timestamp: new Date().toISOString(),
       level,
       message,
-      data,
+      ...options,
     };
 
     this.logs.push(entry);
@@ -73,29 +95,74 @@ export class Logger {
       this.logs.shift();
     }
 
-    this.writeLog(level, message, data);
+    this.writeLog(entry);
   }
 
-  private writeLog(level: LogLevel, message: string, data?: unknown): void {
+  private writeLog(entry: LogEntry): void {
     const time = new Date().toISOString().split("T")[1]?.split(".")[0] || "";
-    let msg = `${time} [${level.toUpperCase()}] [OMMS] ${message}`;
+    let msg = `${time} [${entry.level.toUpperCase()}] [OMMS] ${entry.message}`;
 
-    if (data !== undefined) {
-      if (data instanceof Error) {
-        msg += `\n  Error: ${data.message}`;
-      } else if (typeof data === "object") {
-        try {
-          msg += `\n  ${JSON.stringify(data)}`;
-        } catch {
-          msg += `\n  [Object]`;
+    if (entry.method) {
+      msg += ` [${entry.method}]`;
+    }
+
+    if (entry.params) {
+      try {
+        const paramsStr = JSON.stringify(entry.params);
+        if (paramsStr.length > 200) {
+          msg += `\n  Params: ${paramsStr.slice(0, 200)}...`;
+        } else {
+          msg += `\n  Params: ${paramsStr}`;
         }
-      } else {
-        msg += ` ${String(data)}`;
+      } catch {
+        msg += `\n  Params: [Complex object]`;
       }
     }
 
+    if (entry.agentId) {
+      msg += `\n  AgentID: ${entry.agentId}`;
+    }
+
+    if (entry.sessionId) {
+      msg += `\n  SessionID: ${entry.sessionId}`;
+    }
+
+    if (entry.memoryId) {
+      msg += `\n  MemoryID: ${entry.memoryId}`;
+    }
+
+    if (entry.returns !== undefined) {
+      try {
+        const returnsStr = JSON.stringify(entry.returns);
+        if (returnsStr.length > 200) {
+          msg += `\n  Returns: ${returnsStr.slice(0, 200)}...`;
+        } else {
+          msg += `\n  Returns: ${returnsStr}`;
+        }
+      } catch {
+        msg += `\n  Returns: [Complex object]`;
+      }
+    }
+
+    if (entry.data !== undefined) {
+      try {
+        const dataStr = JSON.stringify(entry.data);
+        if (dataStr.length > 200) {
+          msg += `\n  Data: ${dataStr.slice(0, 200)}...`;
+        } else {
+          msg += `\n  Data: ${dataStr}`;
+        }
+      } catch {
+        msg += `\n  Data: [Complex object]`;
+      }
+    }
+
+    if (entry.error) {
+      msg += `\n  Error: ${entry.error}`;
+    }
+
     if (this.logOutput === "console" || this.logOutput === "both") {
-      switch (level) {
+      switch (entry.level) {
         case "debug":
         case "info":
           console.log(msg);

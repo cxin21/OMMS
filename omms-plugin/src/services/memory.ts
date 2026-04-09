@@ -9,30 +9,99 @@ import type {
 } from "../types/index.js";
 import { scorer } from "./scorer.js";
 import { profileEngine } from "./profile.js";
-import { vectorStore } from "./vector-store.js";
 import { getEmbeddingService } from "./embedding.js";
 import { getLogger } from "./logger.js";
+import { persistence } from "./persistence.js";
 
 const IN_MEMORY_STORE = new Map<string, Memory>();
+
+export { IN_MEMORY_STORE };
 
 export class MemoryService {
   private config: OMMSConfig;
   private logger = getLogger();
+  private initialized = false;
 
   constructor(config: OMMSConfig = {}) {
     this.config = config;
   }
 
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
+
+    try {
+      // 先初始化 Embedding 服务以获取实际维度
+      if (this.config.embedding) {
+        const embeddingService = getEmbeddingService(this.config.embedding);
+        await embeddingService.initialize(); // 验证并获取实际维度
+      }
+
+      // 使用实际维度初始化持久化层
+      const actualDimensions = this.config.embedding?.dimensions || 1024;
+      await persistence.initialize(actualDimensions);
+      
+      const memories = await persistence.loadAll();
+
+      for (const memory of memories) {
+        IN_MEMORY_STORE.set(memory.id, memory);
+      }
+
+      this.logger.info("Memory service initialized with persistence", {
+        method: "initialize",
+        params: {},
+        returns: "void",
+        data: {
+          loaded: memories.length,
+          path: persistence.getPath(),
+          vectorDimensions: actualDimensions,
+        },
+      });
+    } catch (error) {
+      this.logger.error("Failed to load from persistence", {
+        method: "initialize",
+        params: {},
+        returns: "void",
+        error: String(error),
+      });
+    }
+
+    this.initialized = true;
+  }
+
   updateConfig(config: OMMSConfig): void {
     this.config = { ...this.config, ...config };
+
+    this.initialize().catch((error) => {
+      this.logger.error("Failed to initialize memory service", {
+        method: "updateConfig",
+        params: { config: { ...config, embedding: config.embedding ? '[...config]' : undefined } },
+        returns: "void",
+        error: String(error),
+      });
+    });
 
     if (config.enableVectorSearch && config.embedding) {
       try {
         getEmbeddingService(config.embedding);
-        vectorStore.initialize(config.embedding.dimensions || 1024);
-        this.logger.info("Memory service configured with vector search");
+        this.logger.info("Memory service configured with vector search", {
+          method: "updateConfig",
+          params: { config: { ...config, embedding: config.embedding ? '[...config]' : undefined } },
+          returns: "void",
+          data: {
+            enableVectorSearch: config.enableVectorSearch,
+            embedding: config.embedding ? '[...config]' : undefined,
+          },
+        });
       } catch {
-        this.logger.warn("Embedding service not configured, using keyword search only");
+        this.logger.warn("Embedding service not configured, using keyword search only", {
+          method: "updateConfig",
+          params: { config: { ...config, embedding: config.embedding ? '[...config]' : undefined } },
+          returns: "void",
+          data: {
+            enableVectorSearch: config.enableVectorSearch,
+            embedding: config.embedding ? '[...config]' : undefined,
+          },
+        });
       }
     }
   }
@@ -40,7 +109,14 @@ export class MemoryService {
   async extractFromMessages(
     messages: Array<{ role: string; content: string }>
   ): Promise<ExtractedFact[]> {
-    this.logger.debug("Extracting from messages", { count: messages.length });
+    this.logger.info("[EXTRACT] Starting extraction", {
+      method: "extractFromMessages",
+      params: {
+        messagesCount: messages.length,
+      },
+      returns: `ExtractedFact[${messages.length}]`,
+      data: { messagesCount: messages.length },
+    });
 
     const rules = [
       {
@@ -62,6 +138,10 @@ export class MemoryService {
       {
         pattern: /(?:学到了|理解了|发现了|原来|明白了|搞清楚|搞懂)/gi,
         type: "learning" as MemoryType,
+      },
+      {
+        pattern: /(?:朋友|认识|合作|伙伴|同事|团队|关系|联系|认识|熟悉|陌生|朋友关系|合作关系|同事关系)/gi,
+        type: "relationship" as MemoryType,
       },
     ];
 
@@ -100,7 +180,12 @@ export class MemoryService {
       }
     }
 
-    this.logger.debug("Extraction complete", { input: messages.length, output: results.length });
+    this.logger.debug("Extraction complete", {
+      method: "extractFromMessages",
+      params: { messagesCount: messages.length },
+      returns: `ExtractedFact[${results.length}]`,
+      data: { input: messages.length, output: results.length },
+    });
 
     return results.slice(0, 50);
   }
@@ -114,37 +199,120 @@ export class MemoryService {
     sessionId?: string;
     metadata?: Record<string, unknown>;
   }): Promise<Memory> {
-    this.logger.debug("Storing memory", {
-      type: params.type,
-      importance: params.importance,
-      contentLength: params.content.length,
+    this.logger.info("[STORE] Creating memory", {
+      method: "store",
+      params: {
+        ...params,
+        content: String(params.content).slice(0, 50),
+      },
+      returns: "Memory",
+      agentId: params.agentId,
+      sessionId: params.sessionId,
     });
+
+    const ownerAgentId = params.agentId || "default";
 
     const memory: Memory = {
       id: this.generateId(),
       content: params.content.slice(0, 1000),
       type: params.type,
       importance: params.importance,
+      scopeScore: 0,
       scope: params.scope || scorer.decideScope(params.importance),
       block: scorer.decideBlock(params.importance),
+      ownerAgentId: ownerAgentId,
       agentId: params.agentId,
       sessionId: params.sessionId,
       tags: [params.type],
+      recallByAgents: {},
+      usedByAgents: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      recallCount: 0,
       updateCount: 0,
       metadata: params.metadata || {},
     };
 
     IN_MEMORY_STORE.set(memory.id, memory);
-    this.logger.info("Memory stored", { id: memory.id, scope: memory.scope });
+    this.logger.info("[STORE] Memory created", {
+      method: "store",
+      params: {
+        ...params,
+        content: String(params.content).slice(0, 50),
+      },
+      returns: "Memory",
+      agentId: params.agentId,
+      sessionId: params.sessionId,
+      memoryId: memory.id,
+      data: {
+        id: memory.id,
+        scope: memory.scope,
+        block: memory.block,
+        totalInStore: IN_MEMORY_STORE.size,
+      },
+    });
 
+    let vector: number[] | undefined;
     if (this.config.enableVectorSearch !== false) {
       try {
-        await vectorStore.add(memory, memory.content);
+        const embeddingService = getEmbeddingService();
+        const [embedding] = await embeddingService.embed([memory.content]);
+        vector = embedding;
+        this.logger.debug("[STORE] Generated embedding", {
+          method: "store",
+          params: {
+            ...params,
+            content: String(params.content).slice(0, 50),
+          },
+          returns: "Memory",
+          agentId: params.agentId,
+          sessionId: params.sessionId,
+          memoryId: memory.id,
+          data: { dimensions: embedding.length },
+        });
       } catch (error) {
-        this.logger.warn("Failed to add vector", { error: String(error) });
+        this.logger.warn("[STORE] Failed to generate embedding", {
+          method: "store",
+          params: {
+            ...params,
+            content: String(params.content).slice(0, 50),
+          },
+          returns: "Memory",
+          agentId: params.agentId,
+          sessionId: params.sessionId,
+          memoryId: memory.id,
+          error: String(error),
+        });
       }
+    }
+
+    try {
+      await persistence.save(memory, vector);
+      this.logger.info("[STORE] Memory saved to LanceDB", {
+        method: "store",
+        params: {
+          ...params,
+          content: String(params.content).slice(0, 50),
+        },
+        returns: "Memory",
+        agentId: params.agentId,
+        sessionId: params.sessionId,
+        memoryId: memory.id,
+        data: { success: true },
+      });
+    } catch (error) {
+      this.logger.error("[STORE] Failed to save to LanceDB", {
+        method: "store",
+        params: {
+          ...params,
+          content: String(params.content).slice(0, 50),
+        },
+        returns: "Memory",
+        agentId: params.agentId,
+        sessionId: params.sessionId,
+        memoryId: memory.id,
+        error: String(error),
+      });
     }
 
     return memory;
@@ -160,34 +328,121 @@ export class MemoryService {
       boostOnRecall?: boolean;
     }
   ): Promise<RecallResult & { boosted: number }> {
-    this.logger.debug("Recall with priority ranking", { query, agentId: options?.agentId, sessionId: options?.sessionId });
+    this.logger.info("[RECALL] Starting recall", {
+      method: "recall",
+      params: { query, ...options },
+      returns: "RecallResult",
+      agentId: options?.agentId,
+      sessionId: options?.sessionId,
+    });
 
     const limit = options?.limit || 10;
     const memories = [...IN_MEMORY_STORE.values()];
 
     if (memories.length === 0) {
+      this.logger.info("[RECALL] No memories found", {
+        method: "recall",
+        params: { query, ...options },
+        returns: "RecallResult",
+        agentId: options?.agentId,
+        sessionId: options?.sessionId,
+      });
       return { profile: "", memories: [], boosted: 0 };
     }
 
+    let searchResults: Array<{ id: string; score: number }> = [];
+
+    if (this.config.enableVectorSearch !== false) {
+      try {
+        const embeddingService = getEmbeddingService();
+        if (embeddingService) {
+          const queryVector = await embeddingService.embedOne(query);
+          if (queryVector.length === 1024) {
+            searchResults = await persistence.vectorSearch(queryVector, limit * 2);
+            this.logger.info("[RECALL] Vector search results", {
+              method: "recall",
+              params: { query, ...options },
+              returns: "RecallResult",
+              agentId: options?.agentId,
+              sessionId: options?.sessionId,
+              data: { count: searchResults.length },
+            });
+          } else {
+            this.logger.warn("[RECALL] Embedding dimension mismatch, skipping vector search", {
+              method: "recall",
+              params: { query, ...options },
+              returns: "RecallResult",
+              agentId: options?.agentId,
+              sessionId: options?.sessionId,
+              data: { expected: 1024, actual: queryVector.length },
+            });
+          }
+        }
+      } catch (error) {
+        this.logger.warn("[RECALL] Vector search failed, falling back to text search", {
+          method: "recall",
+          params: { query, ...options },
+          returns: "RecallResult",
+          agentId: options?.agentId,
+          sessionId: options?.sessionId,
+          error: String(error),
+        });
+      }
+    }
+
+    const currentAgentId = options?.agentId || "default";
     const scoredMemories: Array<{ memory: Memory; score: number; priority: number }> = [];
 
     for (const memory of memories) {
-      const priority = this.calculatePriority(memory, options?.agentId, options?.sessionId);
-      const similarity = this.calculateSimilarity(query, memory);
-      const importanceBoost = memory.importance * 0.3;
-      const finalScore = similarity * priority + importanceBoost;
+      let similarity = 0;
 
-      scoredMemories.push({ memory, score: finalScore, priority });
+      if (searchResults.length > 0) {
+        const vectorResult = searchResults.find(r => r.id === memory.id);
+        if (vectorResult) {
+          similarity = vectorResult.score;
+        }
+      }
+
+      if (similarity === 0) {
+        similarity = this.calculateSimilarity(query, memory);
+      }
+
+      const finalScore = scorer.calculateRecallPriority(memory, currentAgentId, similarity);
+
+      scoredMemories.push({ memory, score: finalScore, priority: finalScore });
     }
 
     scoredMemories.sort((a, b) => b.score - a.score);
     const topMemories = scoredMemories.slice(0, limit).map(s => s.memory);
+
+    this.logger.info("[RECALL] Scored results", {
+      method: "recall",
+      params: { query, ...options },
+      returns: "RecallResult",
+      agentId: options?.agentId,
+      sessionId: options?.sessionId,
+      data: {
+        topScores: scoredMemories.slice(0, 3).map(s => ({
+          id: s.memory.id,
+          score: s.score.toFixed(3),
+          scope: s.memory.scope,
+          owner: s.memory.ownerAgentId,
+          isOwner: s.memory.ownerAgentId === currentAgentId
+        }))
+      }
+    });
 
     let boosted = 0;
     const shouldBoost = options?.boostOnRecall !== false;
 
     for (const memory of topMemories) {
       memory.accessedAt = new Date().toISOString();
+      memory.recallCount = (memory.recallCount || 0) + 1;
+
+      if (!memory.recallByAgents) {
+        memory.recallByAgents = {};
+      }
+      memory.recallByAgents[currentAgentId] = (memory.recallByAgents[currentAgentId] || 0) + 1;
 
       if (shouldBoost) {
         const boostAmount = this.calculateBoostAmount(memory);
@@ -195,40 +450,52 @@ export class MemoryService {
           await this.boost(memory.id, boostAmount);
           boosted++;
         }
+
+        const newScopeScore = scorer.boostScopeScore(memory, currentAgentId, false);
+        if (newScopeScore !== memory.scopeScore) {
+          memory.scopeScore = newScopeScore;
+          this.logger.debug("[RECALL] Scope score boosted", {
+            method: "recall",
+            params: { query, ...options },
+            returns: "RecallResult",
+            agentId: options?.agentId,
+            sessionId: options?.sessionId,
+            memoryId: memory.id,
+            data: {
+              oldScore: memory.scopeScore - (newScopeScore - memory.scopeScore),
+              newScore: newScopeScore
+            }
+          });
+        }
       }
+
+      await this.update(memory.id, {
+        accessedAt: memory.accessedAt,
+        recallCount: memory.recallCount,
+        scopeScore: memory.scopeScore,
+        recallByAgents: memory.recallByAgents,
+      });
     }
 
     const profileMemories = this.getAll({ agentId: options?.agentId, limit: 100 });
     const profile = profileEngine.build(profileMemories, options?.agentId || "default");
     const profileSummary = profileEngine.summarize(profile);
 
-    this.logger.info("Recall complete", {
-      query,
-      results: topMemories.length,
-      boosted,
-      priorities: scoredMemories.slice(0, 3).map(s => ({ scope: s.memory.scope, score: s.score.toFixed(2) })),
+    this.logger.info("[RECALL] Complete", {
+      method: "recall",
+      params: { query, ...options },
+      returns: "RecallResult",
+      agentId: options?.agentId,
+      sessionId: options?.sessionId,
+      data: {
+        query,
+        results: topMemories.length,
+        boosted,
+        vectorUsed: searchResults.length > 0,
+      }
     });
 
     return { profile: profileSummary, memories: topMemories, boosted };
-  }
-
-  private calculatePriority(memory: Memory, agentId?: string, sessionId?: string): number {
-    if (memory.scope === "session" && memory.sessionId === sessionId) {
-      return 1.0;
-    }
-    if (memory.scope === "agent" && memory.agentId === agentId) {
-      return 0.8;
-    }
-    if (memory.scope === "global") {
-      return 0.6;
-    }
-    if (memory.scope === "session") {
-      return 0.4;
-    }
-    if (memory.scope === "agent") {
-      return 0.2;
-    }
-    return 0.1;
   }
 
   private calculateSimilarity(query: string, memory: Memory): number {
@@ -297,21 +564,29 @@ export class MemoryService {
     for (const memory of memories) {
       if (scorer.shouldDelete(memory)) {
         IN_MEMORY_STORE.delete(memory.id);
-        await vectorStore.delete(memory.id);
+        await persistence.delete(memory.id);
         deleted++;
         this.logger.debug("Deleted", { id: memory.id, importance: memory.importance });
       } else if (scorer.shouldArchive(memory)) {
         await this.update(memory.id, { block: "archived" });
         archived++;
         this.logger.debug("Archived", { id: memory.id });
-      } else if (scorer.shouldShareToGlobal(memory)) {
-        await this.update(memory.id, { scope: "global", block: "core" });
-        promoted++;
-        this.logger.info("Promoted to global", { id: memory.id });
-      } else if (scorer.shouldShareToAgent(memory)) {
-        await this.update(memory.id, { scope: "agent" });
-        promoted++;
-        this.logger.debug("Promoted to agent", { id: memory.id });
+      } else {
+        const newScope = scorer.shouldPromote(memory);
+        if (newScope) {
+          const updates: Partial<Memory> = { scope: newScope };
+          if (newScope === "global" && memory.importance >= 0.8) {
+            updates.block = "core";
+          }
+          await this.update(memory.id, updates);
+          promoted++;
+          this.logger.info("Promoted to " + newScope, {
+            id: memory.id,
+            scopeScore: memory.scopeScore,
+            recallCount: memory.recallCount,
+            usedByAgents: memory.usedByAgents?.length
+          });
+        }
       }
     }
 
@@ -325,30 +600,48 @@ export class MemoryService {
     if (!memory) return null;
 
     const oldImportance = memory.importance;
-    let newScope = memory.scope;
-    let newBlock = memory.block;
-
-    if (scorer.shouldShareToGlobal(memory)) {
-      newScope = "global";
-    } else if (scorer.shouldShareToAgent(memory)) {
-      newScope = "agent";
-    }
-
-    if (newScope !== memory.scope) {
-      await this.update(id, { scope: newScope, block: newBlock });
-    }
-
     const newImportance = Math.min(memory.importance + amount, 1.0);
 
-    this.logger.info("Memory boosted", {
+    this.logger.info("Memory importance boosted", {
       id,
       oldImportance,
       newImportance,
       boostAmount: amount,
-      scopeChanged: memory.scope !== newScope,
     });
 
     return await this.update(id, { importance: newImportance });
+  }
+
+  async boostScopeScore(id: string, agentId: string, isEffectiveUse: boolean = false): Promise<Memory | null> {
+    const memory = IN_MEMORY_STORE.get(id);
+    if (!memory) return null;
+
+    const oldScopeScore = memory.scopeScore || 0;
+    const newScopeScore = scorer.boostScopeScore(memory, agentId, isEffectiveUse);
+
+    if (newScopeScore !== oldScopeScore) {
+      const updates: Partial<Memory> = { scopeScore: newScopeScore };
+
+      if (isEffectiveUse && !(memory.usedByAgents?.includes(agentId))) {
+        if (!memory.usedByAgents) {
+          memory.usedByAgents = [];
+        }
+        memory.usedByAgents.push(agentId);
+        updates.usedByAgents = memory.usedByAgents;
+      }
+
+      this.logger.info("Scope score boosted", {
+        id,
+        oldScopeScore,
+        newScopeScore,
+        agentId,
+        isEffectiveUse,
+      });
+
+      return await this.update(id, updates);
+    }
+
+    return memory;
   }
 
   async update(id: string, updates: Partial<Memory>): Promise<Memory | null> {
@@ -366,6 +659,10 @@ export class MemoryService {
     IN_MEMORY_STORE.set(id, updated);
     this.logger.debug("Memory updated", { id, updates: Object.keys(updates) });
 
+    persistence.update(updated).catch((error) => {
+      this.logger.error("Failed to persist memory update", error);
+    });
+
     return updated;
   }
 
@@ -379,16 +676,25 @@ export class MemoryService {
       global: memories.filter(m => m.scope === "global").length,
       byType: { fact: 0, preference: 0, decision: 0, error: 0, learning: 0, relationship: 0 },
       avgImportance: 0,
+      avgScopeScore: 0,
     };
 
+    this.logger.info("[STATS] Memory counts", {
+      inMemory: IN_MEMORY_STORE.size,
+      returned: memories.length,
+    });
+
     let totalImportance = 0;
+    let totalScopeScore = 0;
     for (const memory of memories) {
       stats.byType[memory.type]++;
       totalImportance += memory.importance;
+      totalScopeScore += memory.scopeScore || 0;
     }
 
     if (memories.length > 0) {
       stats.avgImportance = totalImportance / memories.length;
+      stats.avgScopeScore = totalScopeScore / memories.length;
     }
 
     const sorted = [...memories].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
@@ -398,7 +704,14 @@ export class MemoryService {
       stats.newestMemory = sorted[sorted.length - 1].createdAt;
     }
 
-    this.logger.debug("Stats computed", { total: stats.total });
+    this.logger.info("[STATS] Computed", {
+      total: stats.total,
+      session: stats.session,
+      agent: stats.agent,
+      global: stats.global,
+      avgImportance: stats.avgImportance.toFixed(3),
+      avgScopeScore: stats.avgScopeScore.toFixed(3),
+    });
 
     return stats;
   }
@@ -406,7 +719,7 @@ export class MemoryService {
   async clear(): Promise<void> {
     const count = IN_MEMORY_STORE.size;
     IN_MEMORY_STORE.clear();
-    await vectorStore.clear();
+    await persistence.clear();
     this.logger.info("Memory cleared", { count });
   }
 

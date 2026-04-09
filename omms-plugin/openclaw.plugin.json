@@ -2,8 +2,8 @@
   "id": "omms",
   "name": "OMMS Memory System",
   "description": "Intelligent memory management with vector search, user profiles, and knowledge graphs for OpenClaw",
-  "version": "1.3.0",
-  "author": "OMMS Team",
+  "version": "2.5.0",
+  "author": "cxin21",
   "license": "MIT",
   "homepage": "https://github.com/omms-team/openclaw-omms",
   "repository": "https://github.com/omms-team/openclaw-omms",
@@ -49,6 +49,37 @@
         "type": "number",
         "default": 50,
         "description": "Maximum memories to capture per session"
+      },
+      "webUiPort": {
+        "type": "number",
+        "default": 3456,
+        "description": "Web UI server port (default: 3456)"
+      },
+      "llm": {
+        "type": "object",
+        "description": "LLM service configuration for memory extraction",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "default": "openai-compatible",
+            "description": "LLM provider (e.g., openai-compatible, minimax)"
+          },
+          "model": {
+            "type": "string",
+            "default": "abab6.5s-chat",
+            "description": "LLM model name for extraction"
+          },
+          "baseURL": {
+            "type": "string",
+            "default": "https://api.minimax.chat/v1",
+            "description": "LLM API base URL"
+          },
+          "apiKey": {
+            "type": "string",
+            "description": "LLM API key"
+          }
+        },
+        "required": ["baseURL", "apiKey", "model"]
       },
       "embedding": {
         "type": "object",
@@ -116,6 +147,125 @@
           "filePath": {
             "type": "string",
             "description": "Log file path (required if output is file/both)"
+          }
+        }
+      },
+      "scopeUpgrade": {
+        "type": "object",
+        "description": "Memory scope upgrade configuration (controls when memories expand to wider scopes)",
+        "properties": {
+          "agentThreshold": {
+            "type": "number",
+            "default": 0.3,
+            "description": "Scope score threshold to upgrade to agent scope"
+          },
+          "globalThreshold": {
+            "type": "number",
+            "default": 0.6,
+            "description": "Scope score threshold to upgrade to global scope"
+          },
+          "minRecallCount": {
+            "type": "number",
+            "default": 2,
+            "description": "Minimum recall count before scope upgrade"
+          },
+          "minAgentCount": {
+            "type": "number",
+            "default": 2,
+            "description": "Minimum number of different agents using the memory before global upgrade"
+          }
+        }
+      },
+      "forgetPolicy": {
+        "type": "object",
+        "description": "Memory forget/archive policy configuration",
+        "properties": {
+          "archiveThreshold": {
+            "type": "number",
+            "default": 0.2,
+            "description": "Importance below this triggers archive check"
+          },
+          "archiveDays": {
+            "type": "number",
+            "default": 30,
+            "description": "Days since last access to trigger archive"
+          },
+          "archiveUpdateDays": {
+            "type": "number",
+            "default": 14,
+            "description": "Days since last update to trigger archive (secondary condition)"
+          },
+          "deleteThreshold": {
+            "type": "number",
+            "default": 0.1,
+            "description": "Importance below this triggers delete check"
+          },
+          "deleteDays": {
+            "type": "number",
+            "default": 180,
+            "description": "Days since last update to trigger delete"
+          }
+        }
+      },
+      "boostPolicy": {
+        "type": "object",
+        "description": "Memory importance boost policy on recall",
+        "properties": {
+          "boostEnabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable automatic importance boost on recall"
+          },
+          "lowBoost": {
+            "type": "number",
+            "default": 0.1,
+            "description": "Boost amount for importance < 0.3"
+          },
+          "mediumBoost": {
+            "type": "number",
+            "default": 0.08,
+            "description": "Boost amount for importance 0.3-0.5"
+          },
+          "highBoost": {
+            "type": "number",
+            "default": 0.05,
+            "description": "Boost amount for importance 0.5-0.8"
+          },
+          "maxImportance": {
+            "type": "number",
+            "default": 1.0,
+            "description": "Maximum importance value (capped)"
+          }
+        }
+      },
+      "recall": {
+        "type": "object",
+        "description": "Memory recall configuration",
+        "properties": {
+          "autoRecallLimit": {
+            "type": "number",
+            "default": 5,
+            "description": "Number of memories to auto-recall before prompt build"
+          },
+          "manualRecallLimit": {
+            "type": "number",
+            "default": 10,
+            "description": "Default limit for manual recall tool"
+          },
+          "minSimilarity": {
+            "type": "number",
+            "default": 0.5,
+            "description": "Minimum similarity score to include in results"
+          },
+          "boostOnRecall": {
+            "type": "boolean",
+            "default": true,
+            "description": "Boost memory importance on recall"
+          },
+          "boostScopeScoreOnRecall": {
+            "type": "boolean",
+            "default": true,
+            "description": "Boost scope score on recall"
           }
         }
       }

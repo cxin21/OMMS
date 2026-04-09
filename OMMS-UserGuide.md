@@ -1,436 +1,506 @@
 # OMMS 使用指南
 
-**版本**: 1.3.0
-**日期**: 2026-04-08
+**版本**: 2.5.0
+**日期**: 2026-04-11
 
 ---
 
-## 一、工作原理
+## 一、概述
 
-### 1.1 整体流程
+OMMS (OpenClaw Memory Management System) 为 AI Agent 提供长期记忆能力。
+
+### 1.1 功能特点
+
+- **自动记忆**: 对话结束自动提取关键内容
+- **智能召回**: 对话前自动注入相关记忆
+- **双评分系统**: 独立计算重要性评分和作用域评分
+- **分级管理**: session → agent → global 三级作用域
+- **遗忘机制**: 低价值记忆自动归档/删除
+- **强化机制**: 被召回的记忆自动提升重要性
+- **跨Agent追踪**: 追踪记忆被不同Agent的使用情况
+- **持久化**: 重启后记忆不丢失
+- **Web UI**: 可视化管理面板
+
+### 1.2 核心设计理念
+
+**记忆首先属于创建者，通过使用逐渐扩展**
+
+- 每个记忆首先独属于创建它的Agent
+- 创建者对自有记忆有最高优先级
+- 记忆通过被其他Agent有效使用来扩展作用域
+- 重要性和作用域评分完全独立
+
+---
+
+## 二、工作原理
+
+### 2.1 记忆生命周期
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   用户对话   │ ──► │   Agent     │ ──► │   记忆存储   │
-│             │     │   处理      │     │             │
-└─────────────┘     └─────────────┘     └─────────────┘
-                           │                   │
-                           ▼                   ▼
-                    ┌─────────────┐     ┌─────────────┐
-                    │  自动提取   │     │   向量存储   │
-                    │  关键内容   │     │   (Embedding)│
-                    └─────────────┘     └─────────────┘
-                           │
-                           ▼
-                    ┌─────────────┐
-                    │   重要性   │
-                    │   评分      │
-                    └─────────────┘
-```
-
-### 1.2 自动记忆流程
-
-```
-用户说："我用TypeScript开发React项目，喜欢用VSCode"
+用户对话
     │
     ▼
-┌─────────────────────────────────────────────┐
-│            agent_end Hook 触发                │
-├─────────────────────────────────────────────┤
-│  1. extractFromMessages()                    │
-│     - 正则匹配提取关键内容                    │
-│     - "用TypeScript开发React项目" → fact    │
-│     - "喜欢用VSCode" → preference           │
-│                                              │
-│  2. scorer.score()                          │
-│     - 计算重要性分数                         │
-│     - fact: 0.6, preference: 0.7           │
-│                                              │
-│  3. memoryService.store()                   │
-│     - 保存到内存                            │
-│     - 生成向量存入向量库                    │
-│     - 记录日志                             │
-└─────────────────────────────────────────────┘
-```
-
-### 1.3 记忆检索流程
-
-```
-用户问："我用什么技术栈？"
+agent_end Hook 触发
     │
     ▼
-┌─────────────────────────────────────────────┐
-│            omms_recall 工具调用              │
-├─────────────────────────────────────────────┤
-│  1. embedding.embedOne(query)              │
-│     - 调用远程 API 生成向量                 │
-│                                              │
-│  2. vectorStore.search()                   │
-│     - 余弦相似度搜索                       │
-│     - 关键词匹配                           │
-│     - RRF 融合排序                         │
-│                                              │
-│  3. profileEngine.build()                 │
-│     - 构建用户画像                         │
-│                                              │
-│  4. 返回结果                              │
-│     - Profile + 相关记忆                    │
-└─────────────────────────────────────────────┘
+提取关键内容 (中文关键词 + LLM)
+    │
+    ▼
+存储记忆 (带重要性评分)
+    │
+    ▼
+整理记忆 (遗忘/强化/升级)
+    │
+    ▼
+持久化存储
+```
+
+### 2.2 召回流程
+
+```
+用户发送消息
+    │
+    ▼
+before_prompt_build Hook 触发
+    │
+    ▼
+分级召回 (所有者 > 当前Agent > 其他Agent)
+    │
+    ▼
+计算综合分数 (相似度 × 重要性 × 作用域权重 + scopeScore加成)
+    │
+    ▼
+排序取前5条
+    │
+    ▼
+强化 importance 和 scopeScore
+    │
+    ▼
+构建用户 Profile
+    │
+    ▼
+注入到上下文
 ```
 
 ---
 
-## 二、快速开始
+## 三、双评分系统
 
-### 2.1 配置
+### 3.1 重要性评分（Importance）
 
-在 `~/.openclaw/openclaw.json` 中添加：
+评估记忆本身的价值有多高。
+
+**计算公式：**
+```
+importance = 0.2
+├── + 类型权重 (0.08-0.25)
+├── + 置信度 × 0.15
+├── + 显式请求 × 0.25
+├── + 相关记忆数 × 0.02
+├── + 会话长度 > 10 × 0.05
+└── + 轮次 > 5 × 0.05
+```
+
+**作用：**
+- 决定存储位置（core/session/working）
+- 影响召回时的基础优先级
+- 触发自动强化
+
+### 3.2 作用域评分（Scope Score）
+
+评估记忆被多Agent共享的程度。
+
+**计算公式：**
+```
+scopeScore = 0
+├── + 同一Agent召回次数 × 0.15 (上限0.45)
+├── + 不同Agent数量 × 0.2 (每个新Agent)
+└── + 被多个Agent有效使用 × 0.1 (每次)
+```
+
+**作用：**
+- 决定作用域升级
+- 影响跨Agent召回优先级
+
+### 3.3 评分解耦优势
+
+```
+┌─────────────────────────────────────────────────┐
+│  importance = 0.3  (记忆价值低)                  │
+│  scopeScore = 0.8  (被广泛使用)                  │
+│                                                 │
+│  → 存储在 working                              │
+│  → 但已升级到 global 作用域                     │
+│  → 其他Agent仍可召回                           │
+└─────────────────────────────────────────────────┘
+```
+
+---
+
+## 四、召回优先级机制
+
+### 4.1 优先级权重表
+
+| 优先级 | 条件 | 权重 | 说明 |
+|--------|------|------|------|
+| **1** | 所有者召回 | **1.0** | 记忆创建者拥有最高优先级 |
+| **2** | 当前Agent | **0.8** | 同会话但非所有者 |
+| **3** | global 作用域 | **0.6** | 已扩展到全局的其他Agent |
+| **4** | agent 作用域 | **0.4** | 同一Agent组的其他会话 |
+| **5** | 其他session | **0.2** | 其他会话的其他Agent |
+
+### 4.2 综合评分公式
+
+```
+最终分数 = (相似度 × 重要性) × 作用域权重 + scopeScore × 0.2
+```
+
+### 4.3 计算示例
+
+#### 示例1：所有者召回
+```
+记忆A:
+  ownerAgentId = "Agent A" (当前Agent)
+  importance = 0.7
+  scopeScore = 0.3
+  similarity = 0.9
+
+计算:
+  priority = 0.9 × 0.7 = 0.63
+  scopeWeight = 1.0 (所有者)
+  scopeBonus = 0.3 × 0.2 = 0.06
+
+最终分数 = 0.63 × 1.0 + 0.06 = 0.69
+```
+
+#### 示例2：其他Agent，global作用域
+```
+记忆B:
+  ownerAgentId = "Agent A"
+  currentAgentId = "Agent B"
+  importance = 0.8
+  scopeScore = 0.6
+  scope = "global"
+  similarity = 0.9
+
+计算:
+  priority = 0.9 × 0.8 = 0.72
+  scopeWeight = 0.6 (global)
+  scopeBonus = 0.6 × 0.2 = 0.12
+
+最终分数 = 0.72 × 0.6 + 0.12 = 0.552
+```
+
+---
+
+## 五、作用域升级机制
+
+### 5.1 升级路径
+
+```
+session (作用域评分 0)
+    ↓ scopeScore ≥ 0.3 且 recallCount ≥ 2
+agent (作用域评分 0.3-0.6)
+    ↓ scopeScore ≥ 0.6 且 usedByAgents.length ≥ 2
+global (作用域评分 ≥ 0.6)
+```
+
+### 5.2 升级判断逻辑
+
+```typescript
+// 升级到 Agent
+shouldShareToAgent(memory: Memory): boolean {
+  const hasMultipleRecalls = memory.recallCount >= 2;
+  return memory.scopeScore >= 0.3 && hasMultipleRecalls && memory.scope === "session";
+}
+
+// 升级到 Global
+shouldShareToGlobal(memory: Memory): boolean {
+  const hasMultipleAgents = memory.usedByAgents.length >= 2;
+  return memory.scopeScore >= 0.6 && hasMultipleAgents && memory.scope === "agent";
+}
+```
+
+### 5.3 升级示例
+
+```
+Agent A 创建记忆 M:
+  ownerAgentId = "Agent A"
+  scopeScore = 0
+  scope = "session"
+
+Agent A 召回 2次:
+  recallByAgents["Agent A"] = 2
+  scopeScore += 0.15 × 2 = 0.3
+  触发: scopeScore >= 0.3 && recallCount >= 2
+  升级: session → agent
+
+Agent B 召回并有效使用:
+  recallByAgents["Agent B"] = 1
+  usedByAgents.push("Agent B")
+  scopeScore += 0.15 + 0.2 + 0.1 = 0.45
+  scopeScore = 0.75
+  触发: scopeScore >= 0.6 && usedByAgents.length >= 2 (需要再等一次)
+  升级: agent → global
+
+最终状态:
+  importance = 0.75
+  scopeScore = 0.75
+  scope = "global"
+  ownerAgentId = "Agent A"  (保持不变)
+  usedByAgents = ["Agent A", "Agent B"]
+```
+
+---
+
+## 六、记忆强化机制
+
+### 6.1 Importance 强化
+
+被召回时自动强化评分：
+
+| 当前评分 | 强化增量 | 触发效果 |
+|---------|---------|----------|
+| < 0.3 | +0.1 | 快速提升 |
+| 0.3 - 0.5 | +0.08 | 中等提升 |
+| 0.5 - 0.8 | +0.05 | 缓慢提升 |
+| >= 0.8 | 0 | 不再提升 |
+
+### 6.2 Scope Score 强化
+
+每次召回时：
+
+```typescript
+// 同一Agent召回
+scopeScore += 0.15;
+
+// 新Agent有效使用
+if (isEffectiveUse && !usedByAgents.includes(agentId)) {
+  scopeScore += 0.2;  // 新Agent使用
+  scopeScore += 0.1;  // 有效使用
+}
+```
+
+---
+
+## 七、遗忘策略
+
+### 7.1 遗忘条件
+
+| 条件 | 自动操作 |
+|------|---------|
+| importance < 0.2 且 30天未访问 且 14天未更新 | 归档 |
+| importance < 0.3 且 60天未访问 且 30天未更新 | 归档 |
+| importance < 0.1 且 180天无更新 且 updateCount === 0 | 删除 |
+
+### 7.2 存储块转换
+
+```
+working (importance < 0.5)
+    ↓ importance ≥ 0.5
+session (0.5 ≤ importance < 0.8)
+    ↓ importance ≥ 0.8
+core (importance ≥ 0.8)
+    ↓ 遗忘检查
+archived (importance < 0.2 且 30天未访问)
+    ↓
+deleted (importance < 0.1 且 180天无更新)
+```
+
+---
+
+## 八、工具使用
+
+### 8.1 omms_recall - 搜索记忆
+
+```
+参数:
+  - query: 搜索查询 (必填)
+  - limit: 返回数量 (可选，默认5)
+
+示例:
+  "用户最近做了哪些决策"
+  "关于Python项目的记忆"
+```
+
+### 8.2 omms_write - 显式保存记忆
+
+```
+参数:
+  - content: 要记住的内容 (必填)
+  - type: 记忆类型 (可选: fact/preference/decision/error/learning/relationship)
+  - importance: 重要性 0-1 (可选，默认0.5)
+
+示例:
+  content: "用户偏好使用TypeScript"
+  type: "preference"
+  importance: 0.8
+```
+
+### 8.3 omms_stats - 查看统计
+
+```
+无参数
+
+返回:
+  - 总记忆数
+  - 各作用域数量
+  - 各类型数量
+  - 日志统计
+```
+
+### 8.4 omms_logs - 查看日志
+
+```
+参数:
+  - level: 日志级别 (可选: debug/info/warn/error)
+  - limit: 返回数量 (可选，默认50)
+```
+
+### 8.5 omms_graph - 知识图谱（可选）
+
+```
+参数:
+  - query: 关系查询 (必填)
+
+示例:
+  "用户和项目的交互关系"
+  "某个主题的相关知识"
+```
+
+---
+
+## 九、Web UI
+
+### 9.1 访问
+
+启动插件后访问: http://127.0.0.1:3456
+
+### 9.2 功能页面
+
+| 页面 | 功能 |
+|------|------|
+| **概览** | 统计卡片、类型分布图、作用域分布图、最近活动 |
+| **记忆列表** | 搜索、筛选（类型/作用域）、提升/删除 |
+| **活动日志** | 日志统计、完整日志 |
+| **设置** | 配置 LLM/Embedding、功能开关 |
+
+### 9.3 记忆管理
+
+在记忆列表页面可以：
+- 搜索记忆内容
+- 按类型筛选（fact/preference/decision/error/learning/relationship）
+- 按作用域筛选（session/agent/global）
+- 查看记忆详情（ownerAgentId, scopeScore, recallByAgents, usedByAgents）
+- 手动提升记忆级别
+- 删除记忆
+
+---
+
+## 十、持久化存储
+
+### 10.1 存储位置
+
+使用 **LanceDB** 嵌入式向量数据库：
+
+```
+~/.openclaw/omms-data/
+├── .manifest files...
+└── memories (LanceDB 表)
+```
+
+### 10.2 数据字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | string | 唯一标识 |
+| content | string | 记忆内容 |
+| type | string | 记忆类型 |
+| importance | float | 重要性评分 (0-1) |
+| scopeScore | float | 作用域评分 (0-1) |
+| scope | string | 作用域 |
+| block | string | 存储块 |
+| ownerAgentId | string | 记忆所有者Agent ID |
+| recallByAgents | string | JSON，各Agent召回次数 |
+| usedByAgents | string | JSON数组，有效使用的Agent |
+| vector | float[1024] | 向量嵌入 |
+
+---
+
+## 十一、常见使用场景
+
+### 11.1 记忆用户偏好
+
+```
+用户: "我喜欢用 TypeScript，不要用 JavaScript"
+Agent: [自动提取为 preference 类型，importance=0.8]
+```
+
+### 11.2 记忆项目决策
+
+```
+用户: "我们决定用 PostgreSQL 作为数据库"
+Agent: [自动提取为 decision 类型，importance=0.9]
+```
+
+### 11.3 跨Agent共享知识
+
+```
+Agent A: "Python项目使用pytest框架"
+  → 存储为 agent 作用域
+
+Agent B: [召回并使用该记忆]
+  → scopeScore += 0.45
+  → 升级到 global
+
+Agent C: [可以直接召回该记忆]
+```
+
+---
+
+## 十二、配置调整
+
+### 12.1 调整召回数量
 
 ```json
 {
-  "plugins": {
-    "entries": {
-      "omms": {
-        "enabled": true,
-        "config": {
-          "enableAutoCapture": true,
-          "enableVectorSearch": true,
-          "embedding": {
-            "model": "BAAI/bge-m3",
-            "dimensions": 1024,
-            "baseURL": "https://api.siliconflow.cn/v1",
-            "apiKey": "${SILICONFLOW_API_KEY}"
-          }
-        }
-      }
-    }
-  },
-  "tools": {
-    "allow": ["omms_recall", "omms_write", "omms_stats", "omms_logs"]
+  "recall": {
+    "autoRecallLimit": 5,
+    "manualRecallLimit": 10
   }
 }
 ```
 
-### 2.2 使用方式
+### 12.2 调整遗忘策略
 
-OMMS 有两种使用方式：
-
-| 方式 | 说明 | 触发 |
-|------|------|------|
-| **自动** | Agent 自动提取记忆 | `agent_end` hook |
-| **手动** | 用户显式调用工具 | `omms_write` 等工具 |
-
----
-
-## 三、分级召回机制
-
-### 3.1 召回优先级
-
-记忆按以下优先级排序：
-
-| 优先级 | 作用域 | 说明 |
-|--------|--------|------|
-| 1 | 当前会话 | 当前对话中的记忆，权重最高 |
-| 2 | 当前Agent | 当前Agent的记忆 |
-| 3 | 全局 | 跨Agent共享的记忆 |
-| 4 | 其他会话 | 历史会话中的记忆 |
-| 5 | 其他Agent | 其他Agent的记忆 |
-
-**综合评分公式**：
-```
-最终分数 = 相似度 × 作用域权重 + 重要性 × 0.3
+```json
+{
+  "forgetPolicy": {
+    "archiveThreshold": 0.2,
+    "archiveDays": 30,
+    "deleteThreshold": 0.1,
+    "deleteDays": 180
+  }
+}
 ```
 
-### 3.2 记忆强化机制
+### 12.3 调整作用域升级阈值
 
-被召回并有效使用时会自动强化评分：
-
-| 当前评分 | 强化增量 |
-|---------|---------|
-| < 0.3 | +0.1 |
-| 0.3 - 0.5 | +0.08 |
-| 0.5 - 0.8 | +0.05 |
-| >= 0.8 | 不再提升 |
-
-**效果**：多次被召回的记忆会逐渐升级作用域
-
----
-
-## 四、工具使用
-
-### 4.1 omms_recall - 搜索记忆
-
-**触发场景**：
-- 用户问"之前..."
-- 用户问"我记得..."
-- 用户问"我用什么..."
-
-**参数**：
-```
-query: 搜索内容 (必填)
-limit: 返回数量 (可选，默认5)
-```
-
-**示例**：
-```
-用户：我想起之前我用过什么IDE？
-
-Agent 调用：
-omms_recall({ query: "IDE 开发工具" })
-
-返回：
-## Profile
-Preferences: 用户喜欢用VSCode
-
-## Relevant Memories
-1. [preference] 用户喜欢用VSCode
-2. [fact] 用户用TypeScript开发React项目
+```json
+{
+  "scopeUpgrade": {
+    "agentThreshold": 0.3,
+    "globalThreshold": 0.6,
+    "minRecallCount": 2,
+    "minAgentCount": 2
+  }
+}
 ```
 
 ---
 
-### 3.2 omms_write - 保存记忆
-
-**触发场景**：
-- 用户说"记住..."
-- 用户说"note that..."
-- 用户说"别忘了..."
-- 用户做出重要决定
-
-**参数**：
-```
-content: 要记住的内容 (必填)
-type: 记忆类型 (可选)
-        - fact (默认)
-        - preference
-        - decision
-        - error
-        - learning
-importance: 重要性 0-1 (可选，默认0.5)
-```
-
-**示例**：
-```
-用户：记住，我偏好用pnpm作为包管理器
-
-Agent 调用：
-omms_write({
-  content: "用户偏好用pnpm作为包管理器",
-  type: "preference",
-  importance: 0.7
-})
-
-返回：Saved: mem_123456_abc123
-```
-
----
-
-### 3.3 omms_stats - 查看统计
-
-**触发场景**：
-- 查看记忆数量
-- 排查问题
-
-**参数**：无
-
-**示例**：
-```
-Agent 调用：
-omms_stats({})
-
-返回：
-Total: 42, Long-term: 35, Session: 7
-```
-
----
-
-### 3.4 omms_logs - 查看日志
-
-**触发场景**：
-- 排查问题
-- 调试
-
-**参数**：
-```
-level: debug/info/warn/error (可选)
-limit: 返回条数 (可选，默认50)
-```
-
-**示例**：
-```
-Agent 调用：
-omms_logs({ level: "warn", limit: 20 })
-
-返回：
-## OMMS Logs (15 entries)
-Total logs: 150
-By level: debug=100, info=45, warn=5, error=0
-
-2026-04-08T10:30:00 [WARN] Embedding API error { status: 401 }
-```
-
----
-
-## 四、自动行为
-
-### 4.1 自动提取
-
-`enableAutoCapture: true` 时，每次对话结束会自动提取：
-
-| 类型 | 关键词示例 | 重要性基础分 |
-|------|-----------|-------------|
-| `decision` | "决定"、"选了这个"、"最终方案" | 0.45 |
-| `error` | "失败"、"错误"、"bug"、"问题" | 0.40 |
-| `preference` | "喜欢"、"偏好"、"一般用" | 0.35 |
-| `fact` | "项目"、"系统"、"工具"、"使用" | 0.30 |
-| `learning` | "学会了"、"理解了"、"发现" | 0.30 |
-
-### 4.2 重要性评分
-
-```
-最终分数 = 基础分 + 调整项
-
-调整项：
-- 显式请求（用户说"记住"）：+0.25
-- 相关记忆越多：+0.02（上限0.10）
-- 会话超过10轮：+0.05
-- 包含"最终"/"确定"：+0.10（decision类型）
-```
-
-### 4.3 记忆强化机制
-
-被召回时自动强化：
-
-| 当前评分 | 强化增量 |
-|---------|---------|
-| < 0.3 | +0.05 |
-| 0.3 - 0.5 | +0.08 |
-| 0.5 - 0.8 | +0.10 |
-
-**效果**：
-- 低分记忆被多次召回后会逐渐提升
-- 评分提升后可能触发升级：`session` → `long-term` → `core`
-- 长期有用的记忆自动成为核心记忆
-
-### 4.4 遗忘策略
-
-| 条件 | 自动操作 |
-|------|---------|
-| importance < 0.2 且 30天未访问 | 归档 |
-| importance < 0.1 且 180天无更新 | 删除 |
-| importance > 0.5 | 升级为长期记忆 |
-| importance > 0.7 | 成为核心记忆 |
-
----
-
-## 五、配置选项
-
-### 5.1 核心选项
-
-| 选项 | 默认值 | 说明 |
-|------|--------|------|
-| `enableAutoCapture` | true | 自动从对话提取记忆 |
-| `enableAutoRecall` | true | 自动注入相关记忆 |
-| `enableVectorSearch` | true | 启用向量搜索 |
-| `enableProfile` | true | 构建用户画像 |
-
-### 5.2 高级选项
-
-| 选项 | 默认值 | 说明 |
-|------|--------|------|
-| `maxMemoriesPerSession` | 50 | 每会话最大提取数 |
-| `embedding.model` | BAAI/bge-m3 | Embedding 模型 |
-| `search.vectorWeight` | 0.7 | 向量搜索权重 |
-| `search.keywordWeight` | 0.3 | 关键词搜索权重 |
-| `logging.level` | info | 日志级别 |
-
----
-
-## 六、最佳实践
-
-### 6.1 何时使用自动模式
-
-✅ **适合**：
-- 日常对话
-- 开发讨论
-- 技术决策
-
-❌ **不适合**：
-- 敏感信息（密码、密钥）
-- 测试/临时内容
-- 无关闲聊
-
-### 6.2 何时手动保存
-
-✅ **手动保存**：
-- 重要决定
-- 用户明确要求记住
-- 长期偏好
-- 错误经验
-
-### 6.3 提问技巧
-
-| ❌ 低效提问 | ✅ 高效提问 |
-|-----------|------------|
-| "我之前用什么IDE？" | "我的开发工具偏好是什么？" |
-| "记住我用VSCode" | "记住我偏好VSCode作为主要IDE" |
-| "我之前说过什么？" | "关于数据库的决策有哪些？" |
-
----
-
-## 七、调试
-
-### 7.1 查看日志
-
-```bash
-# 终端查看
-tail -f ~/.openclaw/logs/omms.log | grep OMMS
-
-# 或在 Agent 中使用
-omms_logs({ level: "debug" })
-```
-
-### 7.2 常见问题
-
-| 问题 | 解决 |
-|------|------|
-| 记忆没有提取 | 检查 `enableAutoCapture` 是否为 true |
-| 搜索不准确 | 调整 `search.vectorWeight` 增加向量权重 |
-| API 报错 | 检查 `embedding.apiKey` 配置 |
-| 配置无效 | 确认 `openclaw gateway restart` |
-
----
-
-## 八、示例对话
-
-### 8.1 日常开发
-
-```
-用户：我要开发一个新的React项目
-Agent：好的，我来创建React项目...
-
-用户：记住，我用TypeScript，不用JavaScript
-Agent：已记住，你偏好TypeScript。
-
-用户：用什么数据库好？
-Agent：基于你之前的技术栈，我建议PostgreSQL...
-
-用户：我之前用什么数据库？
-Agent：让我查一下...
-omms_recall({ query: "数据库" })
-找到：用户偏好用pnpm作为包管理器
-```
-
-### 8.2 决策追踪
-
-```
-用户：我们决定用PostgreSQL数据库
-Agent：好的，已记录这个决策。
-
-用户：我们之前做过哪些决策？
-Agent：让我查一下...
-omms_recall({ query: "决策" })
-1. [decision] 决定用PostgreSQL数据库
-2. [decision] 决定使用TypeScript
-3. [decision] 选择React作为前端框架
-```
+## 十三、获取帮助
+
+- 安装配置: 查看 OMMS-Install.md
+- 设计文档: 查看 OMMS-Design.md
+- GitHub Issues: https://github.com/cxin21/openclaw-omms/issues

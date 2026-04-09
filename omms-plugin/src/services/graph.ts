@@ -1,4 +1,7 @@
 import type { GraphNode, GraphEdge, RelationshipType } from "../types/index.js";
+import { join } from "path";
+import { readFile, writeFile, mkdir } from "fs/promises";
+import { existsSync } from "fs";
 
 const RELATION_PATTERNS: Array<{ pattern: RegExp; type: RelationshipType }> = [
   { pattern: /(\w+)\s+uses?\s+(\w+)/gi, type: "uses" },
@@ -9,24 +12,113 @@ const RELATION_PATTERNS: Array<{ pattern: RegExp; type: RelationshipType }> = [
   { pattern: /(\w+)\s+resolves?\s+(\w+)/gi, type: "resolves" },
 ];
 
+interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
 export class GraphEngine {
   private nodes = new Map<string, GraphNode>();
   private edges = new Map<string, GraphEdge>();
+  private initialized = false;
+  private dataPath: string;
+
+  constructor() {
+    const homeDir = process.env.HOME || process.env.USERPROFILE || "/tmp";
+    this.dataPath = join(homeDir, ".openclaw", "omms-graph-data");
+  }
+
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
+
+    try {
+      if (!existsSync(this.dataPath)) {
+        await mkdir(this.dataPath, { recursive: true });
+      }
+
+      const nodesPath = join(this.dataPath, "nodes.json");
+      const edgesPath = join(this.dataPath, "edges.json");
+
+      if (existsSync(nodesPath)) {
+        const nodesData = await readFile(nodesPath, "utf-8");
+        const nodes: GraphNode[] = JSON.parse(nodesData);
+        for (const node of nodes) {
+          this.nodes.set(node.id, node);
+        }
+      }
+
+      if (existsSync(edgesPath)) {
+        const edgesData = await readFile(edgesPath, "utf-8");
+        const edges: GraphEdge[] = JSON.parse(edgesData);
+        for (const edge of edges) {
+          this.edges.set(edge.id, edge);
+        }
+      }
+
+      console.log(`[GRAPH] Loaded ${this.nodes.size} nodes and ${this.edges.size} edges from disk`);
+    } catch (error) {
+      console.warn("[GRAPH] Failed to load graph data from disk", error);
+    }
+
+    this.initialized = true;
+  }
+
+  private async saveNodes(): Promise<void> {
+    try {
+      const nodesPath = join(this.dataPath, "nodes.json");
+      const data = JSON.stringify([...this.nodes.values()], null, 2);
+      await writeFile(nodesPath, data, "utf-8");
+    } catch (error) {
+      console.warn("[GRAPH] Failed to save nodes", error);
+    }
+  }
+
+  private async saveEdges(): Promise<void> {
+    try {
+      const edgesPath = join(this.dataPath, "edges.json");
+      const data = JSON.stringify([...this.edges.values()], null, 2);
+      await writeFile(edgesPath, data, "utf-8");
+    } catch (error) {
+      console.warn("[GRAPH] Failed to save edges", error);
+    }
+  }
 
   async process(content: string): Promise<void> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
     const entities = this.extractEntities(content);
     const relations = this.extractRelations(content, entities);
 
+    let nodesChanged = false;
+    let edgesChanged = false;
+
     for (const entity of entities) {
-      this.upsertNode(entity);
+      if (this.upsertNode(entity)) {
+        nodesChanged = true;
+      }
     }
 
     for (const edge of relations) {
-      this.upsertEdge(edge);
+      if (this.upsertEdge(edge)) {
+        edgesChanged = true;
+      }
+    }
+
+    if (nodesChanged) {
+      await this.saveNodes();
+    }
+    if (edgesChanged) {
+      await this.saveEdges();
     }
   }
 
   async search(query: string): Promise<{ nodes: GraphNode[]; paths: GraphEdge[][] }> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
     const queryEntities = this.extractEntities(query);
     const relevantNodes: GraphNode[] = [];
     const paths: GraphEdge[][] = [];
@@ -89,6 +181,20 @@ export class GraphEngine {
     return parts.join("\n");
   }
 
+  getStats(): { nodeCount: number; edgeCount: number } {
+    return {
+      nodeCount: this.nodes.size,
+      edgeCount: this.edges.size,
+    };
+  }
+
+  async clear(): Promise<void> {
+    this.nodes.clear();
+    this.edges.clear();
+    await this.saveNodes();
+    await this.saveEdges();
+  }
+
   private extractEntities(content: string): GraphNode[] {
     const patterns = [
       /[A-Z][a-zA-Z0-9]+(?:[A-Z][a-zA-Z0-9]+)*/g,
@@ -110,6 +216,9 @@ export class GraphEngine {
           type: this.inferType(name),
           name,
           aliases: [],
+          mentionCount: 1,
+          metadata: {},
+          createdAt: new Date().toISOString(),
         });
       }
     }
@@ -119,9 +228,7 @@ export class GraphEngine {
 
   private inferType(name: string): GraphNode["type"] {
     const lower = name.toLowerCase();
-    if (/project|app|system|product/i.test(lower)) return "project";
     if (/react|vue|angular|node|python|typescript|java/i.test(lower)) return "concept";
-    if (/user|admin|developer|john|bob/i.test(lower)) return "person";
     return "entity";
   }
 
@@ -145,6 +252,7 @@ export class GraphEngine {
             type,
             weight: 0.8,
             evidence: [match[0]],
+            createdAt: new Date().toISOString(),
           });
         }
       }
@@ -153,22 +261,35 @@ export class GraphEngine {
     return edges;
   }
 
-  private upsertNode(node: GraphNode): void {
+  private upsertNode(node: GraphNode): boolean {
     const existing = this.findNode(node.name);
     if (existing) {
-      existing.aliases.push(...node.aliases);
+      for (const alias of node.aliases) {
+        if (!existing.aliases.includes(alias)) {
+          existing.aliases.push(alias);
+        }
+      }
+      existing.mentionCount = (existing.mentionCount || 0) + 1;
+      return true;
     } else {
       this.nodes.set(node.id, node);
+      return true;
     }
   }
 
-  private upsertEdge(edge: GraphEdge): void {
+  private upsertEdge(edge: GraphEdge): boolean {
     const existing = this.findEdge(edge.source, edge.target);
     if (existing) {
       existing.weight = Math.min(existing.weight + 0.1, 1.0);
-      existing.evidence.push(...edge.evidence);
+      for (const evidence of edge.evidence) {
+        if (!existing.evidence.includes(evidence)) {
+          existing.evidence.push(evidence);
+        }
+      }
+      return true;
     } else {
       this.edges.set(edge.id, edge);
+      return true;
     }
   }
 

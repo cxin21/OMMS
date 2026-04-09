@@ -15,16 +15,21 @@ export interface Memory {
   content: string;
   type: MemoryType;
   importance: number;
+  scopeScore: number;
   scope: MemoryScope;
   block: MemoryBlock;
+  ownerAgentId: string;
   subject?: string;
   sessionId?: string;
   agentId?: string;
   userId?: string;
   tags: string[];
+  recallByAgents: Record<string, number>;
+  usedByAgents: string[];
   createdAt: string;
   updatedAt: string;
   accessedAt?: string;
+  recallCount: number;
   updateCount: number;
   metadata: Record<string, unknown>;
 }
@@ -72,10 +77,12 @@ export interface ProjectContext {
 
 export interface GraphNode {
   id: string;
-  type: "entity" | "concept" | "project" | "person";
   name: string;
+  type: "entity" | "concept";
   aliases: string[];
-  description?: string;
+  mentionCount: number;
+  metadata: Record<string, unknown>;
+  createdAt: string;
 }
 
 export interface GraphEdge {
@@ -85,13 +92,13 @@ export interface GraphEdge {
   type: RelationshipType;
   weight: number;
   evidence: string[];
+  createdAt: string;
 }
 
 export type RelationshipType =
   | "uses"
   | "depends_on"
   | "part_of"
-  | "similar_to"
   | "causes"
   | "precedes"
   | "resolves";
@@ -113,6 +120,7 @@ export interface MemoryStats {
   global: number;
   byType: Record<MemoryType, number>;
   avgImportance: number;
+  avgScopeScore: number;
   oldestMemory?: string;
   newestMemory?: string;
 }
@@ -168,6 +176,7 @@ export interface OMMSConfig {
   maxMemoriesPerSession?: number;
   autoArchiveThreshold?: number;
   extractionModel?: string;
+  webUiPort?: number;
   embedding?: EmbeddingConfig;
   llm?: LLMConfig;
   vectorStore?: VectorStoreConfig;
@@ -176,5 +185,32 @@ export interface OMMSConfig {
     level?: "debug" | "info" | "warn" | "error";
     output?: "console" | "file" | "both";
     filePath?: string;
+  };
+  scopeUpgrade?: {
+    agentThreshold?: number;
+    globalThreshold?: number;
+    minRecallCount?: number;
+    minAgentCount?: number;
+  };
+  forgetPolicy?: {
+    archiveThreshold?: number;
+    archiveDays?: number;
+    archiveUpdateDays?: number;
+    deleteThreshold?: number;
+    deleteDays?: number;
+  };
+  boostPolicy?: {
+    boostEnabled?: boolean;
+    lowBoost?: number;
+    mediumBoost?: number;
+    highBoost?: number;
+    maxImportance?: number;
+  };
+  recall?: {
+    autoRecallLimit?: number;
+    manualRecallLimit?: number;
+    minSimilarity?: number;
+    boostOnRecall?: boolean;
+    boostScopeScoreOnRecall?: boolean;
   };
 }

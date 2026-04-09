@@ -4,6 +4,8 @@ import { memoryService } from "./services/memory.js";
 import { initEmbeddingService } from "./services/embedding.js";
 import { configureLLMExtractor } from "./services/llm.js";
 import { initLogger, getLogger } from "./services/logger.js";
+import { webServer } from "./web-server.js";
+import { graphEngine } from "./services/graph.js";
 import type { OMMSConfig } from "./types/index.js";
 
 export default definePluginEntry({
@@ -56,10 +58,27 @@ export default definePluginEntry({
 
     memoryService.updateConfig(config);
     logger.info("Memory service configured", {
-      enableAutoCapture: config.enableAutoCapture,
+      enableCapture: config.enableAutoCapture,
       enableLLMExtraction: config.enableLLMExtraction,
       enableVectorSearch: config.enableVectorSearch,
       enableProfile: config.enableProfile,
+      enableGraphEngine: config.enableGraphEngine,
+    });
+
+    if (config.enableGraphEngine) {
+      graphEngine.initialize().then(() => {
+        logger.info("Knowledge graph engine initialized with persistence");
+      }).catch((error) => {
+        logger.error("Failed to initialize knowledge graph engine", error as Error);
+      });
+      logger.info("Knowledge graph engine enabled", {
+        description: "Graph engine will process memories and provide context during recall"
+      });
+    }
+
+    const webUiPort = config.webUiPort || 3456;
+    webServer.start(webUiPort).catch((error) => {
+      logger.warn("Web UI server failed to start", { error: String(error) });
     });
 
     api.registerTool(
@@ -194,27 +213,72 @@ export default definePluginEntry({
 
     api.registerHook("before_prompt_build", async (event: any) => {
       const hookLogger = getLogger();
-      hookLogger.debug("before_prompt_build hook triggered", { sessionId: event.sessionId, messages: event.messages?.length });
+      hookLogger.info("[RECALL] ====== before_prompt_build HOOK START ======");
+      hookLogger.info("[RECALL] Hook invocation", {
+        name: "before_prompt_build",
+        params: {
+          sessionId: event.sessionId,
+          agentId: event.agentId,
+          messagesCount: event.messages?.length || 0,
+          prependContextCount: event.prependContext?.length || 0,
+        }
+      });
 
       const hookConfig = (api.pluginConfig || {}) as OMMSConfig;
       if (!hookConfig.enableAutoRecall) {
-        hookLogger.debug("Auto-recall disabled, skipping");
+        hookLogger.info("[RECALL] Auto-recall disabled, skipping", {
+          method: "before_prompt_build",
+          returns: "void"
+        });
         return;
       }
 
       try {
-        const lastUserMessage = event.messages
-          ?.filter((m: any) => m.role === "user")
-          ?.pop()?.content || "";
+        const messages = event.messages || [];
+        const userMessages = messages.filter((m: any) => m.role === "user");
+        const lastUserMessage = userMessages[userMessages.length - 1]?.content || "";
+
+        hookLogger.debug("[RECALL] User message details", {
+          method: "before_prompt_build",
+          params: {
+            userMessageCount: userMessages.length,
+            lastMessageLength: lastUserMessage.length,
+            lastMessageContent: lastUserMessage.slice(0, 100),
+          }
+        });
 
         if (!lastUserMessage || lastUserMessage.length < 3) {
-          hookLogger.debug("No user message to search");
+          hookLogger.info("[RECALL] No user message to search, skipping", {
+            method: "before_prompt_build",
+            returns: "void"
+          });
           return;
         }
+
+        hookLogger.info("[RECALL] Starting recall search", {
+          method: "before_prompt_build",
+          params: {
+            query: lastUserMessage.slice(0, 50),
+            agentId: event.agentId,
+          }
+        });
 
         const result = await memoryService.recall(lastUserMessage, {
           agentId: event.agentId,
           limit: 5,
+        });
+
+        hookLogger.info("[RECALL] Recall result", {
+          method: "before_prompt_build",
+          params: {
+            query: lastUserMessage.slice(0, 50),
+            agentId: event.agentId,
+          },
+          returns: {
+            memoriesFound: result.memories.length,
+            boosted: result.boosted || 0,
+            hasProfile: !!result.profile,
+          }
         });
 
         if (result.memories.length > 0) {
@@ -227,72 +291,277 @@ export default definePluginEntry({
           context += "**Recent relevant memories:**\n";
           for (const m of result.memories.slice(0, 5)) {
             context += `- [${m.type}] ${m.content}\n`;
+            hookLogger.debug("[RECALL] Memory item", {
+              type: m.type,
+              scope: m.scope,
+              importance: m.importance,
+              content: m.content.slice(0, 50),
+            });
           }
 
           if (event.prependContext) {
             event.prependContext.push(context);
+            hookLogger.info("[RECALL] Context injected into prompt", {
+              method: "before_prompt_build",
+              params: {
+                prependContextCount: event.prependContext.length,
+              },
+              returns: {
+                contextLength: context.length,
+                memoriesInjected: result.memories.length,
+              }
+            });
           }
-
-          hookLogger.info("Auto-recall injected", {
-            sessionId: event.sessionId,
-            memoriesCount: result.memories.length,
-            boosted: result.boosted || 0,
+        } else {
+          hookLogger.info("[RECALL] No relevant memories found", {
+            method: "before_prompt_build",
+            params: {
+              query: lastUserMessage.slice(0, 50),
+              agentId: event.agentId,
+            },
+            returns: "No memories"
           });
         }
+
+        if (hookConfig.enableGraphEngine) {
+          hookLogger.info("[GRAPH] Searching knowledge graph for context", {
+            method: "before_prompt_build",
+            params: {
+              query: lastUserMessage.slice(0, 50),
+            }
+          });
+          try {
+            const graphResult = await graphEngine.search(lastUserMessage);
+            
+            if (graphResult.nodes.length > 0) {
+              const graphContext = `[Knowledge Graph Context]\nEntities: ${graphResult.nodes.map(n => n.name).join(', ')}\n\nRelations:\n${graphResult.paths.flat().map(edge => `${edge.source} --[${edge.type}]--> ${edge.target}`).join('\n')}`;
+              
+              if (event.prependContext) {
+                event.prependContext.push({
+                  type: "graph",
+                  content: graphContext,
+                  metadata: {
+                    nodeCount: graphResult.nodes.length,
+                    edgeCount: graphResult.paths.flat().length,
+                  }
+                });
+                hookLogger.info("[GRAPH] Graph context injected", {
+                  method: "before_prompt_build",
+                  params: {
+                    query: lastUserMessage.slice(0, 50),
+                  },
+                  returns: {
+                    nodes: graphResult.nodes.length,
+                    edges: graphResult.paths.flat().length,
+                  }
+                });
+              }
+            } else {
+              hookLogger.info("[GRAPH] No relevant graph entities found", {
+                method: "before_prompt_build",
+                params: {
+                  query: lastUserMessage.slice(0, 50),
+                },
+                returns: "No graph entities"
+              });
+            }
+          } catch (error) {
+            hookLogger.error("[GRAPH] Failed to search knowledge graph", {
+              method: "before_prompt_build",
+              params: {
+                query: lastUserMessage.slice(0, 50),
+              },
+              error: String(error)
+            });
+          }
+        }
+
+        hookLogger.info("[RECALL] ====== before_prompt_build HOOK END ======", {
+          method: "before_prompt_build",
+          returns: {
+            prependContextCount: event.prependContext?.length || 0,
+          }
+        });
       } catch (error) {
-        hookLogger.error("before_prompt_build hook failed", error as Error);
+        hookLogger.error("[RECALL] Hook failed", {
+          method: "before_prompt_build",
+          params: {
+            sessionId: event.sessionId,
+            agentId: event.agentId,
+          },
+          error: String(error)
+        });
       }
     });
 
     api.registerHook("agent_end", async (event: any) => {
       const hookLogger = getLogger();
-      hookLogger.debug("agent_end hook triggered", { sessionId: event.sessionId, messages: event.messages?.length });
+      hookLogger.info("[CAPTURE] ====== agent_end HOOK START ======");
+      hookLogger.info("[CAPTURE] Hook invocation", {
+        name: "agent_end",
+        params: {
+          sessionId: event.sessionId,
+          agentId: event.agentId,
+          messagesCount: event.messages?.length || 0,
+        }
+      });
 
       const hookConfig = (api.pluginConfig || {}) as OMMSConfig;
       if (!hookConfig.enableAutoCapture) {
-        hookLogger.debug("Auto-capture disabled, skipping");
+        hookLogger.info("[CAPTURE] Auto-capture disabled, skipping", {
+          method: "agent_end",
+          returns: "void"
+        });
         return;
       }
 
       try {
         const messages = event.messages || [];
+        const userMessages = messages.filter((m: any) => m.role === "user");
+        const assistantMessages = messages.filter((m: any) => m.role === "assistant");
+
+        hookLogger.debug("[CAPTURE] Messages breakdown", {
+          method: "agent_end",
+          params: {
+            total: messages.length,
+            user: userMessages.length,
+            assistant: assistantMessages.length,
+          }
+        });
+
+        for (const msg of userMessages.slice(-3)) {
+          hookLogger.debug("[CAPTURE] User message sample", {
+            method: "agent_end",
+            params: {
+              content: String(msg.content).slice(0, 80),
+            }
+          });
+        }
+
+        hookLogger.info("[CAPTURE] Starting extraction", {
+          method: "agent_end",
+          params: {
+            messagesToProcess: messages.length,
+            usingLLM: hookConfig.enableLLMExtraction,
+          }
+        });
+
         const facts = await memoryService.extractFromMessages(messages);
 
+        hookLogger.info("[CAPTURE] Extraction result", {
+          method: "agent_end",
+          returns: {
+            factsExtracted: facts.length,
+          }
+        });
+
+        for (const fact of facts.slice(0, 10)) {
+          hookLogger.debug("[CAPTURE] Extracted fact", {
+            method: "agent_end",
+            params: {
+              type: fact.type,
+              confidence: fact.confidence,
+              content: String(fact.content).slice(0, 60),
+            }
+          });
+        }
+
+        let storedCount = 0;
         for (const fact of facts.slice(0, hookConfig.maxMemoriesPerSession || 50)) {
-          await memoryService.store({
+          const memory = await memoryService.store({
             content: fact.content,
             type: fact.type,
             importance: fact.importance ?? 0.5,
             sessionId: event.sessionId,
             agentId: event.agentId,
           });
+          storedCount++;
+          hookLogger.debug("[CAPTURE] Memory stored", {
+            method: "agent_end",
+            params: {
+              id: memory.id,
+              type: memory.type,
+              scope: memory.scope,
+              importance: memory.importance,
+            }
+          });
         }
 
+        hookLogger.info("[CAPTURE] Storage complete", {
+          method: "agent_end",
+          returns: {
+            stored: storedCount,
+          }
+        });
+
+        hookLogger.info("[CAPTURE] Starting consolidation", {
+          method: "agent_end"
+        });
         const consolidation = await memoryService.consolidate({
           agentId: event.agentId,
           sessionId: event.sessionId,
           scope: "session",
         });
 
-        hookLogger.info("Agent end hook complete", {
-          sessionId: event.sessionId,
-          extracted: facts.length,
-          consolidated: {
+        hookLogger.info("[CAPTURE] Consolidation complete", {
+          method: "agent_end",
+          returns: {
             archived: consolidation.archived,
             deleted: consolidation.deleted,
             promoted: consolidation.promoted,
-          },
+          }
+        });
+
+        if (hookConfig.enableGraphEngine) {
+          hookLogger.info("[GRAPH] Processing knowledge graph for new memories", {
+            method: "agent_end"
+          });
+          try {
+            const memories = await memoryService.getAll({ agentId: event.agentId });
+            const recentMemories = memories.slice(0, 5);
+            
+            for (const memory of recentMemories) {
+              await graphEngine.process(memory.content);
+            }
+
+            hookLogger.info("[GRAPH] Knowledge graph updated", {
+              method: "agent_end",
+              returns: {
+                processedMemories: recentMemories.length,
+              }
+            });
+          } catch (error) {
+            hookLogger.error("[GRAPH] Failed to process knowledge graph", {
+              method: "agent_end",
+              error: String(error)
+            });
+          }
+        }
+
+        hookLogger.info("[CAPTURE] ====== agent_end HOOK END ======", {
+          method: "agent_end",
+          returns: "void"
         });
       } catch (error) {
-        hookLogger.error("Agent end hook failed", error as Error);
+        hookLogger.error("[CAPTURE] Hook failed", {
+          method: "agent_end",
+          params: {
+            sessionId: event.sessionId,
+            agentId: event.agentId,
+          },
+          error: String(error)
+        });
       }
     });
 
-    logger.info("OMMS v1.2.0 plugin enabled");
+    logger.info("OMMS v2.5.0 plugin enabled");
     if (config.enableVectorSearch && config.embedding) {
       logger.info("Vector search enabled", { model: config.embedding.model });
     } else {
       logger.info("Vector search disabled or not configured");
+    }
+    if (config.enableGraphEngine) {
+      logger.info("Knowledge graph engine enabled");
     }
   },
 

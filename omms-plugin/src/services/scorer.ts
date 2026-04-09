@@ -35,14 +35,6 @@ export class Scorer {
       score += 0.05;
     }
 
-    if (input.type === "decision" && /(?:final|decided|settled|conclusion)/i.test(input.content)) {
-      score += 0.10;
-    }
-
-    if (input.type === "error" && /(?:serious|critical|major|important)/i.test(input.content)) {
-      score += 0.15;
-    }
-
     return Math.min(Math.round(score * 1000) / 1000, 1.0);
   }
 
@@ -52,37 +44,79 @@ export class Scorer {
     return "working";
   }
 
-  decideScope(importance: number): MemoryScope {
-    if (importance >= 0.8) return "global";
-    if (importance >= 0.5) return "agent";
+  decideScope(_importance: number): MemoryScope {
     return "session";
   }
 
   shouldArchive(memory: Memory): boolean {
-    const age = this.daysSince(memory.createdAt);
-    const daysSinceAccess = memory.accessedAt ? this.daysSince(memory.accessedAt) : age;
+    const daysSinceAccess = memory.accessedAt ? this.daysSince(memory.accessedAt) : this.daysSince(memory.updatedAt);
+    const daysSinceUpdate = this.daysSince(memory.updatedAt);
 
     return (
-      (memory.importance < 0.2 && age > 30 && daysSinceAccess > 14) ||
-      (memory.importance < 0.3 && age > 60 && daysSinceAccess > 30)
+      (memory.importance < 0.2 && daysSinceAccess > 30 && daysSinceUpdate > 14) ||
+      (memory.importance < 0.3 && daysSinceAccess > 60 && daysSinceUpdate > 30)
     );
   }
 
   shouldDelete(memory: Memory): boolean {
-    const age = this.daysSince(memory.createdAt);
-    return memory.importance < 0.1 && age > 180 && memory.updateCount === 0;
+    const daysSinceUpdate = this.daysSince(memory.updatedAt);
+    return memory.importance < 0.1 && daysSinceUpdate > 180 && memory.updateCount === 0;
   }
 
-  shouldPromote(memory: Memory): boolean {
-    return memory.importance > 0.5 && memory.scope === "session";
+  shouldPromote(memory: Memory): MemoryScope | null {
+    if (memory.scope === "session" && memory.scopeScore >= 0.3 && memory.recallCount >= 2) {
+      return "agent";
+    }
+    if (memory.scope === "agent" && memory.scopeScore >= 0.6 && (memory.usedByAgents?.length || 0) >= 2) {
+      return "global";
+    }
+    return null;
   }
 
-  shouldShareToAgent(memory: Memory): boolean {
-    return memory.importance > 0.6 && memory.scope === "session";
+  boostScopeScore(memory: Memory, agentId: string, isEffectiveUse: boolean = false): number {
+    let increase = 0;
+
+    const currentAgentRecalls = memory.recallByAgents?.[agentId] || 0;
+    if (currentAgentRecalls < 3) {
+      increase += 0.15;
+    }
+
+    if (isEffectiveUse && !(memory.usedByAgents?.includes(agentId))) {
+      increase += 0.2;
+      increase += 0.1;
+    }
+
+    return Math.min((memory.scopeScore || 0) + increase, 1.0);
   }
 
-  shouldShareToGlobal(memory: Memory): boolean {
-    return memory.importance > 0.8 && memory.scope === "agent";
+  calculateRecallPriority(
+    memory: Memory,
+    currentAgentId: string,
+    similarity: number
+  ): number {
+    let priority = similarity * memory.importance;
+
+    const isOwner = memory.ownerAgentId === currentAgentId;
+    const isCurrentAgent = memory.agentId === currentAgentId;
+
+    let scopeWeight: number;
+    if (isOwner) {
+      scopeWeight = 1.0;
+    } else if (isCurrentAgent) {
+      scopeWeight = 0.8;
+    } else {
+      if (memory.scope === "global") {
+        scopeWeight = 0.6;
+      } else if (memory.scope === "agent") {
+        scopeWeight = 0.4;
+      } else {
+        scopeWeight = 0.2;
+      }
+    }
+
+    const scopeBonus = (memory.scopeScore || 0) * 0.2;
+
+    return priority * scopeWeight + scopeBonus;
   }
 
   private daysSince(dateStr: string): number {

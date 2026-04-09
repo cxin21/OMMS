@@ -11,10 +11,48 @@ export class EmbeddingService {
   private config: EmbeddingConfig;
   private cache = new Map<string, number[]>();
   private logger = getLogger();
+  private actualDimensions: number | null = null; // 实际API返回的维度
 
   constructor(config: EmbeddingConfig) {
     this.config = config;
-    this.logger.info("Embedding service created", { model: config.model, dimensions: config.dimensions });
+    this.logger.info("Embedding service created", { model: config.model, configuredDimensions: config.dimensions });
+  }
+
+  async initialize(): Promise<void> {
+    try {
+      // 验证配置的维度是否与API实际返回的一致
+      const testEmbedding = await this.callAPI("test");
+      this.actualDimensions = testEmbedding.length;
+      
+      if (this.actualDimensions !== this.config.dimensions) {
+        this.logger.warn(
+          "Embedding configuration mismatch", 
+          { 
+            model: this.config.model,
+            configured: this.config.dimensions, 
+            actual: this.actualDimensions 
+          }
+        );
+        
+        // 更新配置到实际维度
+        this.config.dimensions = this.actualDimensions;
+        this.logger.info(
+          "Updated embedding configuration to match actual dimensions", 
+          { 
+            model: this.config.model, 
+            dimensions: this.actualDimensions 
+          }
+        );
+      }
+      
+      this.logger.debug("Embedding service initialized successfully", { 
+        model: this.config.model, 
+        dimensions: this.actualDimensions 
+      });
+    } catch (error) {
+      this.logger.error("Failed to initialize embedding service", error);
+      throw error;
+    }
   }
 
   async embed(texts: string[]): Promise<number[][]> {
@@ -96,6 +134,39 @@ export class EmbeddingService {
     } else {
       this.logger.error("Invalid embedding response format", { data: JSON.stringify(data).slice(0, 200) });
       throw new Error("Invalid embedding response format");
+    }
+
+    // 验证返回的嵌入向量维度是否与配置一致
+    if (embedding.length !== this.config.dimensions) {
+      this.logger.warn(
+        "Embedding dimension mismatch", 
+        { 
+          model, 
+          expected: this.config.dimensions, 
+          actual: embedding.length 
+        }
+      );
+      
+      // 如果不匹配，我们需要处理：
+      // 1. 截断或填充到配置的维度（这里选择截断）
+      if (embedding.length > this.config.dimensions) {
+        embedding = embedding.slice(0, this.config.dimensions);
+        this.logger.debug("Truncated embedding to match configured dimensions", { 
+          from: embedding.length, 
+          to: this.config.dimensions 
+        });
+      } else if (embedding.length < this.config.dimensions) {
+        // 填充到配置的维度
+        const padded = new Array(this.config.dimensions).fill(0);
+        embedding.forEach((value, index) => {
+          padded[index] = value;
+        });
+        embedding = padded;
+        this.logger.debug("Padded embedding to match configured dimensions", { 
+          from: embedding.length, 
+          to: this.config.dimensions 
+        });
+      }
     }
 
     this.logger.debug("Embedding received", { dimensions: embedding.length, duration, cached: false });
