@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Brain, Database, Activity, Search, Settings, RefreshCw, Trash2, ArrowUp, TrendingUp, Users, Clock, BarChart3, Info, Download, ChevronDown, ChevronUp, Edit3, Check, X } from 'lucide-react';
+import { Brain, Database, Activity, Search, Settings, RefreshCw, Trash2, ArrowUp, TrendingUp, Users, Clock, BarChart3, Info, Download, ChevronDown, ChevronUp, Edit3, Check, X, Layers } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import type { Memory, MemoryStats, LogEntry, OMMSConfig } from './types';
 
@@ -51,7 +51,7 @@ interface ApiResponse<T> {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'memories' | 'logs' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'memories' | 'logs' | 'settings' | 'dreaming' | 'graph'>('overview');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -255,6 +255,8 @@ export default function App() {
               { id: 'overview', label: '概览', icon: Database },
               { id: 'memories', label: '记忆列表', icon: Brain },
               { id: 'logs', label: '活动日志', icon: Activity },
+              { id: 'dreaming', label: 'Dreaming', icon: RefreshCw },
+              { id: 'graph', label: '知识图谱', icon: Layers },
               { id: 'settings', label: '设置', icon: Settings },
             ].map((tab) => (
               <button
@@ -491,6 +493,24 @@ export default function App() {
                     }
                     setSelectedMemories(newSelected);
                   }}
+                  onSaveEdit={async (id, content) => {
+                    try {
+                      const response = await fetch(`${API_BASE}/update`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id, content }),
+                      });
+                      
+                      if (response.ok) {
+                        fetchData();
+                      } else {
+                        alert('保存失败，请重试');
+                      }
+                    } catch (error) {
+                      console.error('保存记忆失败:', error);
+                      alert('保存失败，请重试');
+                    }
+                  }}
                 />
               )) : (
                 <div className="text-center py-16 bg-white rounded-2xl shadow-lg">
@@ -507,8 +527,16 @@ export default function App() {
           <LogsPage logs={logs} />
         )}
 
+        {activeTab === 'graph' && (
+          <GraphPage />
+        )}
+
         {activeTab === 'settings' && config && (
           <SettingsPage config={config} onSave={handleSaveConfig} />
+        )}
+
+        {activeTab === 'dreaming' && (
+          <DreamingPage onRefresh={fetchData} />
         )}
       </main>
     </div>
@@ -539,12 +567,13 @@ function StatCard({ label, value, icon: Icon, color }: { label: string; value: n
   );
 }
 
-function MemoryCard({ memory, onDelete, onPromote, selected, onSelect }: { 
+function MemoryCard({ memory, onDelete, onPromote, selected, onSelect, onSaveEdit }: { 
   memory: Memory; 
   onDelete: (id: string) => void; 
   onPromote: (id: string, targetScope?: string) => void;
   selected: boolean;
   onSelect: (selected: boolean) => void;
+  onSaveEdit: (id: string, content: string) => Promise<void>;
 }) {
   const [showPromoteMenu, setShowPromoteMenu] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -554,7 +583,14 @@ function MemoryCard({ memory, onDelete, onPromote, selected, onSelect }: {
   const availableScopes = SCOPE_ORDER.slice(currentScopeIndex + 1);
 
   const handleSaveEdit = async () => {
-    setEditing(false);
+    try {
+      await onSaveEdit(memory.id, editContent);
+      setEditing(false);
+    } catch (error) {
+      console.error('保存记忆失败:', error);
+      alert('保存失败，请重试');
+      setEditContent(memory.content); // 恢复原内容
+    }
   };
 
   return (
@@ -938,6 +974,270 @@ function LogsPage({ logs }: { logs: LogEntry[] }) {
   );
 }
 
+function GraphPage() {
+  const [nodes, setNodes] = useState<any[]>([]);
+  const [edges, setEdges] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedNode, setSelectedNode] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({ nodes: 0, edges: 0, entityTypes: { entity: 0, concept: 0 } });
+
+  useEffect(() => {
+    fetchGraphData();
+  }, []);
+
+  const fetchGraphData = async () => {
+    try {
+      setLoading(true);
+      const [nodesRes, edgesRes, statsRes] = await Promise.all([
+        fetch(`${API_BASE}/graph/nodes`),
+        fetch(`${API_BASE}/graph/edges`),
+        fetch(`${API_BASE}/graph/stats`)
+      ]);
+
+      if (nodesRes.ok && edgesRes.ok && statsRes.ok) {
+        const [nodesData, edgesData, statsData] = await Promise.all([
+          nodesRes.json(),
+          edgesRes.json(),
+          statsRes.json()
+        ]);
+
+        if (nodesData.success) setNodes(nodesData.data);
+        if (edgesData.success) setEdges(edgesData.data);
+        if (statsData.success) setStats(statsData.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch graph data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearch = async () => {
+    if (!searchQuery) {
+      fetchGraphData();
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/graph/search?q=${encodeURIComponent(searchQuery)}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setNodes(data.data.nodes);
+          const allEdges = await fetch(`${API_BASE}/graph/edges`);
+          if (allEdges.ok) {
+            const edgesData = await allEdges.json();
+            if (edgesData.success) {
+              const nodeIds = new Set(data.data.nodes.map((node: any) => node.id));
+              setEdges(edgesData.data.filter((edge: any) => 
+                nodeIds.has(edge.source) || nodeIds.has(edge.target)
+              ));
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to search graph:', error);
+    }
+  };
+
+
+
+  const handleClearGraph = async () => {
+    if (confirm('确定要清除整个知识图谱吗？')) {
+      try {
+        const response = await fetch(`${API_BASE}/graph/clear`, {
+          method: 'POST'
+        });
+        if (response.ok) {
+          setNodes([]);
+          setEdges([]);
+          setStats({ nodes: 0, edges: 0, entityTypes: { entity: 0, concept: 0 } });
+          setSelectedNode(null);
+        }
+      } catch (error) {
+        console.error('Failed to clear graph:', error);
+      }
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <RefreshCw className="w-8 h-8 text-blue-500 animate-spin mx-auto mb-2" />
+          <p className="text-gray-600">加载知识图谱...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* 知识图谱统计 */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white rounded-lg p-6 shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">总节点数</p>
+              <p className="text-2xl font-semibold text-gray-900">{stats.nodes}</p>
+            </div>
+            <div className="p-2 bg-blue-100 rounded-full">
+              <Layers className="w-5 h-5 text-blue-600" />
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-lg p-6 shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">关系数</p>
+              <p className="text-2xl font-semibold text-gray-900">{stats.edges}</p>
+            </div>
+            <div className="p-2 bg-green-100 rounded-full">
+              <Activity className="w-5 h-5 text-green-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg p-6 shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">实体数</p>
+              <p className="text-2xl font-semibold text-gray-900">{stats.entityTypes.entity}</p>
+            </div>
+            <div className="p-2 bg-purple-100 rounded-full">
+              <Brain className="w-5 h-5 text-purple-600" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 控制面板 */}
+      <div className="bg-white rounded-lg p-6 shadow">
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex-1">
+            <input
+              type="text"
+              placeholder="搜索节点..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          
+          <button
+            onClick={handleSearch}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            搜索
+          </button>
+
+          <button
+            onClick={fetchGraphData}
+            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
+            刷新
+          </button>
+
+          <button
+            onClick={handleClearGraph}
+            className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            清除
+          </button>
+        </div>
+      </div>
+
+      {/* 图可视化区域 */}
+      <div className="bg-white rounded-lg p-6 shadow">
+        <div className="h-96 bg-gray-50 rounded-lg border border-gray-200 relative">
+          {nodes.length === 0 ? (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center text-gray-500">
+                <Layers className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                <p>知识图谱为空</p>
+                <p className="text-sm mt-2">添加记忆内容后会自动构建知识图谱</p>
+              </div>
+            </div>
+          ) : (
+            <div className="w-full h-full">
+              {/* 这里应该是图可视化组件，如react-flow或d3-force */}
+              <div className="flex flex-col items-center justify-center h-full">
+                <Layers className="w-12 h-12 text-gray-400 mb-4" />
+                <p className="text-gray-500">图可视化组件待实现</p>
+                <p className="text-sm text-gray-400 mt-2">节点数: {nodes.length}, 关系数: {edges.length}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 节点详情 */}
+      {selectedNode && (
+        <div className="bg-white rounded-lg p-6 shadow">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">节点详情</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <p className="text-sm text-gray-600">名称</p>
+              <p className="font-medium text-gray-900">{selectedNode.name}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">类型</p>
+              <p className="font-medium text-gray-900">
+                {selectedNode.type === 'entity' ? '实体' : '概念'}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">提及次数</p>
+              <p className="font-medium text-gray-900">{selectedNode.mentionCount || 0}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">创建时间</p>
+              <p className="font-medium text-gray-900">
+                {new Date(selectedNode.createdAt).toLocaleString()}
+              </p>
+            </div>
+          </div>
+          
+          {selectedNode.aliases && selectedNode.aliases.length > 0 && (
+            <div className="mt-4">
+              <p className="text-sm text-gray-600 mb-2">别名</p>
+              <div className="flex flex-wrap gap-2">
+                {selectedNode.aliases.map((alias: string, index: number) => (
+                  <span key={index} className="px-2 py-1 bg-gray-100 rounded-full text-xs text-gray-700">
+                    {alias}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {selectedNode.metadata?.memoryIds && selectedNode.metadata.memoryIds.length > 0 && (
+            <div className="mt-4">
+              <p className="text-sm text-gray-600 mb-2">关联记忆</p>
+              <div className="flex flex-wrap gap-2">
+                {selectedNode.metadata.memoryIds.slice(0, 5).map((memoryId: string, index: number) => (
+                  <span key={index} className="px-2 py-1 bg-blue-100 rounded-full text-xs text-blue-700">
+                    {memoryId.slice(0, 8)}...
+                  </span>
+                ))}
+                {selectedNode.metadata.memoryIds.length > 5 && (
+                  <span className="px-2 py-1 bg-gray-100 rounded-full text-xs text-gray-500">
+                    +{selectedNode.metadata.memoryIds.length - 5}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsPage({ config, onSave }: { config: OMMSConfig; onSave: (config: OMMSConfig) => void }) {
   const [editedConfig, setEditedConfig] = useState(config);
   const [saving, setSaving] = useState(false);
@@ -1105,6 +1405,186 @@ function ConfigInput({ label, value, onChange, type = 'text' }: { label: string;
         onChange={(e) => onChange(e.target.value)}
         className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
       />
+    </div>
+  );
+}
+
+function DreamingPage({ onRefresh }: { onRefresh: () => void }) {
+  const [dreamingStatus, setDreamingStatus] = useState<any>(null);
+  const [dreamingLogs, setDreamingLogs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchDreamingStatus = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/dreaming/status`);
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          setDreamingStatus(result.data);
+        }
+      }
+    } catch (error) {
+      console.error('获取Dreaming状态失败:', error);
+    }
+  };
+
+  const handleStartDreaming = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/dreaming/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          setDreamingLogs(prev => [...prev, {
+            timestamp: new Date().toISOString(),
+            message: 'Dreaming process started',
+            level: 'info'
+          }]);
+          onRefresh();
+        }
+      }
+    } catch (error) {
+      console.error('启动Dreaming失败:', error);
+      setDreamingLogs(prev => [...prev, {
+        timestamp: new Date().toISOString(),
+        message: 'Failed to start Dreaming',
+        level: 'error'
+      }]);
+    } finally {
+      setLoading(false);
+      fetchDreamingStatus();
+    }
+  };
+
+  const handleStopDreaming = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/dreaming/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          setDreamingLogs(prev => [...prev, {
+            timestamp: new Date().toISOString(),
+            message: 'Dreaming process stopped',
+            level: 'info'
+          }]);
+        }
+      }
+    } catch (error) {
+      console.error('停止Dreaming失败:', error);
+      setDreamingLogs(prev => [...prev, {
+        timestamp: new Date().toISOString(),
+        message: 'Failed to stop Dreaming',
+        level: 'error'
+      }]);
+    } finally {
+      fetchDreamingStatus();
+    }
+  };
+
+  useEffect(() => {
+    fetchDreamingStatus();
+  }, []);
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-2xl shadow-lg p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Dreaming 状态</h3>
+        
+        {dreamingStatus ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4">
+              <div className="text-2xl font-bold text-blue-600">
+                {dreamingStatus.isRunning ? '运行中' : '已停止'}
+              </div>
+              <div className="text-sm text-blue-700 mt-1">当前状态</div>
+            </div>
+            
+            {dreamingStatus.lastRun && (
+              <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4">
+                <div className="text-2xl font-bold text-green-600">
+                  {new Date(dreamingStatus.lastRun).toLocaleString()}
+                </div>
+                <div className="text-sm text-green-700 mt-1">最后运行</div>
+              </div>
+            )}
+            
+            {dreamingStatus.nextRun && (
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4">
+                <div className="text-2xl font-bold text-purple-600">
+                  {new Date(dreamingStatus.nextRun).toLocaleString()}
+                </div>
+                <div className="text-sm text-purple-700 mt-1">下次运行</div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-center py-8 text-gray-500">
+            正在加载Dreaming状态...
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-lg p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Dreaming 控制</h3>
+        
+        <div className="flex gap-4">
+          <button
+            onClick={handleStartDreaming}
+            disabled={loading || (dreamingStatus?.isRunning)}
+            className="px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all disabled:opacity-50"
+          >
+            {loading ? '启动中...' : '启动Dreaming'}
+          </button>
+          
+          <button
+            onClick={handleStopDreaming}
+            disabled={!dreamingStatus?.isRunning}
+            className="px-6 py-3 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-xl font-semibold hover:from-red-600 hover:to-pink-700 transition-all disabled:opacity-50"
+          >
+            停止Dreaming
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-lg p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Dreaming 日志</h3>
+        
+        {dreamingLogs.length > 0 ? (
+          <div className="space-y-3 max-h-[400px] overflow-y-auto">
+            {dreamingLogs.map((log, index) => (
+              <div key={index} className={`p-3 rounded-lg ${
+                log.level === 'error' ? 'bg-red-50' : 'bg-gray-50'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500">
+                    {new Date(log.timestamp).toLocaleTimeString()}
+                  </span>
+                  <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                    log.level === 'error' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {log.level.toUpperCase()}
+                  </span>
+                  <span className="text-sm text-gray-900 flex-1">{log.message}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8 text-gray-500">
+            暂无Dreaming日志
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { getLogger } from "./logger.js";
+import { getLogger } from "../logging/src/logger.js";
 
 export interface EmbeddingConfig {
   model: string;
@@ -61,7 +61,7 @@ export class EmbeddingService {
     const results: number[][] = [];
 
     for (const text of texts) {
-      const cacheKey = text.slice(0, 100);
+      const cacheKey = this.generateCacheKey(text);
       const cached = this.cache.get(cacheKey);
       if (cached) {
         results.push(cached);
@@ -92,6 +92,17 @@ export class EmbeddingService {
   async embedOne(text: string): Promise<number[]> {
     const [embedding] = await this.embed([text]);
     return embedding;
+  }
+
+  private generateCacheKey(text: string): string {
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+      const char = text.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+      hash = Math.abs(hash);
+    }
+    return hash.toString();
   }
 
   private async callAPI(text: string): Promise<number[]> {

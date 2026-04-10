@@ -1,6 +1,6 @@
 import lancedb, { Index } from "@lancedb/lancedb";
-import type { Memory, VectorSearchResult } from "../types/index.js";
-import { getLogger } from "./logger.js";
+import type { Memory, VectorSearchResult, OMMSConfig } from "../../types/src/index.js";
+import { getLogger } from "../logging/src/logger.js";
 import { join } from "path";
 import { Mutex } from "async-mutex";
 
@@ -12,10 +12,16 @@ export class Persistence {
   private dbPath: string;
   private writeMutex = new Mutex();
   private vectorDimension = 1024;
+  private config: OMMSConfig = {};
 
-  constructor() {
+  constructor(config: OMMSConfig = {}) {
     const homeDir = process.env.HOME || process.env.USERPROFILE || "/tmp";
     this.dbPath = join(homeDir, ".openclaw", "omms-data");
+    this.config = config;
+  }
+
+  updateConfig(config: OMMSConfig): void {
+    this.config = { ...this.config, ...config };
   }
 
   async initialize(actualDimensions: number = 1024): Promise<void> {
@@ -29,18 +35,31 @@ export class Persistence {
         this.initialized = true;
         this.logger.info("[LANCE] Connected to existing table");
         
-        // 验证现有表的向量维度是否与传入的一致
         const sample = await this.table.query().limit(1).toArray();
         if (sample.length > 0) {
           const sampleDimensions = sample[0].vector?.length || 0;
           if (sampleDimensions > 0 && sampleDimensions !== actualDimensions) {
+            const mismatchAction = this.config.vectorStore?.vectorDimensionMismatch || "warn";
+            
             this.logger.warn(
               "[LANCE] Table vector dimension mismatch", 
               { 
                 configured: actualDimensions, 
-                actual: sampleDimensions 
+                actual: sampleDimensions,
+                action: mismatchAction
               }
             );
+
+            if (mismatchAction === "rebuild") {
+              this.logger.info("[LANCE] Rebuilding table with correct dimensions");
+              await this.db.dropTable("memories");
+              this.initialized = false;
+              this.table = null;
+            } else if (mismatchAction === "use-existing") {
+              this.logger.info("[LANCE] Using existing table dimensions", { dimensions: sampleDimensions });
+              this.vectorDimension = sampleDimensions;
+              return;
+            }
           }
         }
         
@@ -49,7 +68,6 @@ export class Persistence {
         this.logger.info("[LANCE] Creating new table");
       }
 
-      // 使用实际维度创建表
       this.vectorDimension = actualDimensions;
       
       const emptyRecord = {
@@ -248,29 +266,31 @@ export class Persistence {
     if (!this.initialized) {
       await this.initialize();
     }
+    
+    return this.writeMutex.runExclusive(async () => {
+      try {
+        // 检查查询向量维度与表向量列维度是否匹配
+        if (queryVector.length !== this.vectorDimension) {
+          this.logger.warn(
+            "[LANCE] Vector dimension mismatch", 
+            { expected: this.vectorDimension, actual: queryVector.length }
+          );
+          return []; // 静默处理，避免查询失败
+        }
 
-    try {
-      // 检查查询向量维度与表向量列维度是否匹配
-      if (queryVector.length !== this.vectorDimension) {
-        this.logger.warn(
-          "[LANCE] Vector dimension mismatch", 
-          { expected: this.vectorDimension, actual: queryVector.length }
-        );
-        return []; // 静默处理，避免查询失败
+        const results = await this.table.vectorSearch(queryVector)
+          .limit(limit)
+          .toArray();
+
+        return results.map((row: any) => ({
+          id: String(row.id),
+          score: row._distance || 0,
+        }));
+      } catch (error) {
+        this.logger.error("[LANCE] Vector search failed", error);
+        return [];
       }
-
-      const results = await this.table.vectorSearch(queryVector)
-        .limit(limit)
-        .toArray();
-
-      return results.map((row: any) => ({
-        id: String(row.id),
-        score: row._distance || 0,
-      }));
-    } catch (error) {
-      this.logger.error("[LANCE] Vector search failed", error);
-      return [];
-    }
+    });
   }
 
   async clear(): Promise<void> {

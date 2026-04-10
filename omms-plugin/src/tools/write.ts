@@ -1,7 +1,10 @@
 import { Type } from "@sinclair/typebox";
 import { memoryService } from "../services/memory.js";
 import { scorer } from "../services/scorer.js";
+import { getLogger } from "../services/logger.js";
 import type { MemoryType, MemoryScope } from "../types/index.js";
+
+const logger = getLogger();
 
 export const ommsWriteTool = {
   name: "omms_write",
@@ -31,7 +34,7 @@ export const ommsWriteTool = {
         content: [{ type: "text" as const, text: `Saved [${memory.scope}]: ${params.content.slice(0, 100)}${params.content.length > 100 ? "..." : ""}` }],
       };
     } catch (error) {
-      console.error("[OMMS] write error:", error);
+      logger.error("[OMMS] write error:", error);
       return { content: [{ type: "text" as const, text: "Failed to save memory" }] };
     }
   },

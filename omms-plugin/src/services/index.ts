@@ -1,8 +1,11 @@
 export { extractor, Extractor } from "./extractor.js";
 export { scorer, Scorer } from "./scorer.js";
+export type { ScorerConfig } from "./scorer.js";
 export { profileEngine, ProfileEngine } from "./profile.js";
-export { graphEngine, GraphEngine } from "./graph.js";
+export { getGraphEngine, GraphEngine } from "./graph.js";
 export { memoryService, MemoryService } from "./memory.js";
 export { EmbeddingService, getEmbeddingService } from "./embedding.js";
 export type { EmbeddingConfig } from "./embedding.js";
 export { getDreamingService, DreamingService } from "./dreaming.js";
+export { getLLMService, getLLMExtractor, configureLLMExtractor, LLMExtractor } from "./llm.js";
+export type { LLMConfig } from "./llm.js";

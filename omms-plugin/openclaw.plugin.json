@@ -1,8 +1,9 @@
 {
   "id": "omms",
+  "kind": "memory",
   "name": "OMMS Memory System",
   "description": "Intelligent memory management with vector search, user profiles, and knowledge graphs for OpenClaw",
-  "version": "3.0.0",
+  "version": "3.5.0",
   "author": "cxin21",
   "license": "MIT",
   "homepage": "https://github.com/omms-team/openclaw-omms",

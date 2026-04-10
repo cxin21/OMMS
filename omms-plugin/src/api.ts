@@ -3,6 +3,7 @@ import { getLogger } from "./services/logger.js";
 import { persistence } from "./services/persistence.js";
 import { scorer } from "./services/scorer.js";
 import { getDreamingService } from "./services/dreaming.js";
+import { getGraphEngine } from "./services/graph.js";
 import type { DreamingStatus, DreamingResult } from "./types/dreaming.js";
 
 const logger = getLogger();
@@ -202,30 +203,38 @@ export function createApiHandlers() {
     },
 
     async getConfig(): Promise<ApiResponse> {
-      return {
-        success: true,
-        data: {
-          version: "2.9.0",
-          llm: {
-            provider: "openai-compatible",
-            model: "abab6.5s-chat",
-            baseURL: "https://api.minimax.chat/v1",
-            apiKey: "***",
+      try {
+        logger.debug("API: getConfig called");
+        const config = memoryService.getConfig();
+        
+        return {
+          success: true,
+          data: {
+            version: "3.5.0",
+            llm: config.llm ? {
+              provider: config.llm.provider,
+              model: config.llm.model,
+              baseURL: config.llm.baseURL,
+              apiKey: "***",
+            } : undefined,
+            embedding: config.embedding ? {
+              model: config.embedding.model,
+              dimensions: config.embedding.dimensions,
+              baseURL: config.embedding.baseURL,
+              apiKey: "***",
+            } : undefined,
+            features: {
+              autoCapture: config.enableAutoCapture,
+              autoRecall: config.enableAutoRecall,
+              llmExtraction: config.enableLLMExtraction,
+              vectorSearch: config.enableVectorSearch,
+            },
           },
-          embedding: {
-            model: "BAAI/bge-m3",
-            dimensions: 1024,
-            baseURL: "https://api.siliconflow.cn/v1",
-            apiKey: "***",
-          },
-          features: {
-            autoCapture: true,
-            autoRecall: true,
-            llmExtraction: true,
-            vectorSearch: true,
-          },
-        },
-      };
+        };
+      } catch (error) {
+        logger.error("API getConfig failed", error as Error);
+        return { success: false, error: String(error) };
+      }
     },
 
     async getDreamingStatus(): Promise<ApiResponse<DreamingStatus>> {
@@ -273,42 +282,235 @@ export function createApiHandlers() {
       }
     },
 
+    async updateMemory(params: { id: string; content: string }): Promise<ApiResponse> {
+      try {
+        logger.debug("API: updateMemory called", { id: params.id });
+        const memories = memoryService.getAll({});
+        const memory = memories.find(m => m.id === params.id);
+        
+        if (!memory) {
+          logger.warn("API: Memory not found for update", { id: params.id });
+          return { success: false, error: "Memory not found" };
+        }
+
+        const updated = await memoryService.update(params.id, { content: params.content });
+        logger.info("Memory updated via API", { 
+          id: params.id, 
+          type: memory.type, 
+          scope: memory.scope,
+          content: params.content.slice(0, 50) 
+        });
+        
+        return { success: true, data: { id: params.id, content: params.content } };
+      } catch (error) {
+        logger.error("API updateMemory failed", error as Error);
+        return { success: false, error: String(error) };
+      }
+    },
+
+    async getGraphStats(): Promise<ApiResponse> {
+      try {
+        logger.debug("API: getGraphStats called");
+        const graphEngine = getGraphEngine();
+        const stats = graphEngine.getStats();
+        return {
+          success: true,
+          data: stats,
+        };
+      } catch (error) {
+        logger.error("API getGraphStats failed", error as Error);
+        return { success: false, error: String(error) };
+      }
+    },
+
+    async getGraphNodes(): Promise<ApiResponse> {
+      try {
+        logger.debug("API: getGraphNodes called");
+        const graphEngine = getGraphEngine();
+        const nodes = graphEngine.getAllNodes();
+        return {
+          success: true,
+          data: nodes,
+        };
+      } catch (error) {
+        logger.error("API getGraphNodes failed", error as Error);
+        return { success: false, error: String(error) };
+      }
+    },
+
+    async getGraphEdges(): Promise<ApiResponse> {
+      try {
+        logger.debug("API: getGraphEdges called");
+        const graphEngine = getGraphEngine();
+        const edges = graphEngine.getAllEdges();
+        return {
+          success: true,
+          data: edges,
+        };
+      } catch (error) {
+        logger.error("API getGraphEdges failed", error as Error);
+        return { success: false, error: String(error) };
+      }
+    },
+
+    async searchGraph(query: string): Promise<ApiResponse> {
+      try {
+        logger.debug("API: searchGraph called", { query });
+        const graphEngine = getGraphEngine();
+        const results = await graphEngine.search(query);
+        return {
+          success: true,
+          data: results,
+        };
+      } catch (error) {
+        logger.error("API searchGraph failed", error as Error);
+        return { success: false, error: String(error) };
+      }
+    },
+
+    async getSubgraph(centerId: string, depth: number = 2): Promise<ApiResponse> {
+      try {
+        logger.debug("API: getSubgraph called", { centerId, depth });
+        const graphEngine = getGraphEngine();
+        const subgraph = graphEngine.getSubgraph(centerId, depth);
+        return {
+          success: true,
+          data: subgraph,
+        };
+      } catch (error) {
+        logger.error("API getSubgraph failed", error as Error);
+        return { success: false, error: String(error) };
+      }
+    },
+
+    async clearGraph(): Promise<ApiResponse> {
+      try {
+        logger.debug("API: clearGraph called");
+        const graphEngine = getGraphEngine();
+        graphEngine.clear();
+        return {
+          success: true,
+          data: { message: "Graph cleared successfully" },
+        };
+      } catch (error) {
+        logger.error("API clearGraph failed", error as Error);
+        return { success: false, error: String(error) };
+      }
+    },
+
     async saveConfig(config: {
       llm?: { provider: string; model: string; baseURL: string; apiKey: string };
       embedding?: { model: string; dimensions: number; baseURL: string; apiKey: string };
       features?: Record<string, boolean>;
     }): Promise<ApiResponse> {
       try {
-        const configPath = `${process.env.HOME || process.env.USERPROFILE}/.openclaw/openclaw.json`;
+        const configDir = `${process.env.HOME || process.env.USERPROFILE}/.openclaw`;
+        const configPath = `${configDir}/openclaw.json`;
 
-        logger.info("Config save requested", {
-          hasLlm: !!config.llm,
-          hasEmbedding: !!config.embedding,
-          hasFeatures: !!config.features,
-          configPath,
+        logger.info("[API] Config save requested", {
+          method: "saveConfig",
+          params: { 
+            hasLlm: !!config.llm, 
+            hasEmbedding: !!config.embedding, 
+            hasFeatures: !!config.features 
+          },
+          returns: "ApiResponse",
+          data: { configPath }
         });
 
-        return {
-          success: true,
-          data: {
-            message: "配置已准备好，请编辑 ~/.openclaw/openclaw.json 文件以应用更改",
-            config: {
-              plugins: {
-                entries: {
-                  omms: {
-                    config: {
-                      ...(config.llm && { llm: config.llm }),
-                      ...(config.embedding && { embedding: config.embedding }),
-                      ...(config.features && { ...config.features }),
-                    },
-                  },
+        const fs = await import('fs/promises');
+        const path = await import('path');
+
+        let existingConfig: any = {};
+        try {
+          const existingContent = await fs.readFile(configPath, 'utf8');
+          existingConfig = JSON.parse(existingContent);
+          logger.debug("[API] Existing config loaded", { 
+            method: "saveConfig",
+            params: { configPath },
+            data: { existingKeys: Object.keys(existingConfig) }
+          });
+        } catch (error) {
+          logger.debug("[API] No existing config found, creating new", {
+            method: "saveConfig",
+            params: { configPath }
+          });
+        }
+
+        const newConfig = {
+          ...existingConfig,
+          plugins: {
+            ...(existingConfig.plugins || {}),
+            entries: {
+              ...(existingConfig.plugins?.entries || {}),
+              omms: {
+                ...(existingConfig.plugins?.entries?.omms || {}),
+                config: {
+                  ...(existingConfig.plugins?.entries?.omms?.config || {}),
+                  ...(config.llm && { llm: config.llm }),
+                  ...(config.embedding && { embedding: config.embedding }),
+                  ...(config.features && { 
+                    enableAutoCapture: config.features.autoCapture,
+                    enableAutoRecall: config.features.autoRecall,
+                    enableLLMExtraction: config.features.llmExtraction,
+                    enableVectorSearch: config.features.vectorSearch,
+                  }),
                 },
               },
             },
           },
         };
+
+        try {
+          await fs.mkdir(configDir, { recursive: true });
+          await fs.writeFile(configPath, JSON.stringify(newConfig, null, 2), 'utf8');
+          
+          logger.info("[API] Configver saved successfully", {
+            method: "saveConfig",
+            params: { configPath },
+            returns: "ApiResponse",
+            data: { success: true }
+          });
+
+          const runtimeConfig: any = {};
+          if (config.llm) {
+            runtimeConfig.llm = config.llm;
+          }
+          if (config.embedding) {
+            runtimeConfig.embedding = config.embedding;
+          }
+          if (config.features) {
+            runtimeConfig.enableAutoCapture = config.features.autoCapture;
+            runtimeConfig.enableAutoRecall = config.features.autoRecall;
+            runtimeConfig.enableLLMExtraction = config.features.llmExtraction;
+            runtimeConfig.enableVectorSearch = config.features.vectorSearch;
+          }
+          
+          memoryService.updateConfig(runtimeConfig);
+
+          return {
+            success: true,
+            data: {
+              message: "配置已保存到 " + configPath,
+              savedConfig: newConfig,
+            },
+          };
+        } catch (writeError) {
+          logger.error("[API] Failed to write config file", {
+            method: "saveConfig",
+            params: { configPath },
+            error: String(writeError)
+          });
+          return {
+            success: false,
+            error: "配置保存失败: " + String(writeError),
+          };
+        }
       } catch (error) {
-        logger.error("API saveConfig failed", error as Error);
+        logger.error("[API] saveConfig failed", {
+          method: "saveConfig",
+          error: String(error)
+        });
         return { success: false, error: String(error) };
       }
     },

@@ -1,4 +1,4 @@
-import type { Memory, UserProfile, StaticFact, PreferenceValue, ProjectContext, MemoryType } from "../types/index.js";
+import type { Memory, UserProfile, StaticFact, PreferenceValue, ProjectContext, MemoryType } from "../../types/src/index.js";
 
 export class ProfileEngine {
   build(memories: Memory[], agentId: string): UserProfile {

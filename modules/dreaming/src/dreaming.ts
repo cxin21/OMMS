@@ -1,7 +1,7 @@
-import { getLogger } from './logger.js';
-import { memoryService } from './memory.js';
-import { scorer } from './scorer.js';
-import type { DreamingConfig, DreamingLog, DreamingStatus, LightPhaseResult, DeepPhaseResult, RemPhaseResult, DreamingResult } from '../types/dreaming.js';
+import { getLogger } from '../logging/src/logger.js';
+import { memoryService } from '../core-memory/src/memory.js';
+import { scorer } from '../core-memory/src/scorer.js';
+import type { DreamingConfig, DreamingLog, DreamingStatus, LightPhaseResult, DeepPhaseResult, RemPhaseResult, DreamingResult } from '../../types/src/dreaming.js';
 
 class DreamingService {
   private config: DreamingConfig;
@@ -146,6 +146,45 @@ class DreamingService {
     }
   }
 
+  private checkTriggerConditions(): boolean {
+    // 检查memoryThreshold条件
+    if (this.config.memoryThreshold?.enabled) {
+      const memories = memoryService.getAll();
+      
+      if (memories.length < this.config.memoryThreshold.minMemories!) {
+        this.logger.debug("[DREAMING] Memory count below threshold", { 
+          count: memories.length, 
+          threshold: this.config.memoryThreshold.minMemories 
+        });
+        return false;
+      }
+
+      const now = new Date();
+      const oldestMemory = memories.reduce((oldest, current) => 
+        new Date(current.updatedAt) < new Date(oldest.updatedAt) ? current : oldest
+      );
+      
+      const ageHours = (now.getTime() - new Date(oldestMemory.updatedAt).getTime()) / (1000 * 60 * 60);
+      if (ageHours > this.config.memoryThreshold.maxAgeHours!) {
+        this.logger.debug("[DREAMING] Oldest memory exceeds age threshold", { 
+          ageHours: Math.round(ageHours), 
+          threshold: this.config.memoryThreshold.maxAgeHours 
+        });
+        return false;
+      }
+    }
+
+    // 检查sessionTrigger条件
+    if (this.config.sessionTrigger?.enabled) {
+      // 这里需要获取会话计数，但当前实现中没有会话管理
+      // 暂时不实现这个功能，默认返回true
+      this.logger.debug("[DREAMING] Session trigger enabled but not implemented");
+      return true;
+    }
+
+    return true;
+  }
+
   private calculateNextRunTime(): Date {
     const now = new Date();
     const [hours, minutes] = this.config.schedule.time.split(':').map(Number);
@@ -166,6 +205,21 @@ class DreamingService {
     const data: any = {};
 
     try {
+      // 检查是否满足触发条件
+      if (!this.checkTriggerConditions()) {
+        this.logger.info("[DREAMING] Trigger conditions not met, skipping");
+        return {
+          success: false,
+          phase: 'SKIPPED',
+          startTime: startTime.toISOString(),
+          endTime: new Date().toISOString(),
+          duration: new Date().getTime() - startTime.getTime(),
+          data: {},
+          logs: [],
+          error: 'Trigger conditions not met'
+        };
+      }
+
       this.logger.info("[DREAMING] ====== LIGHT PHASE START ======");
       const lightResult = await this.lightPhase();
       logs.push(...this.createLogs("LIGHT", "info", "Light phase completed", lightResult));
@@ -220,15 +274,18 @@ class DreamingService {
       count: recentMemories.length
     });
 
-    const scoredMemories = recentMemories.map(memory => ({
-      memory,
-      importanceScore: memory.importance,
-      scopeScore: memory.scopeScore,
-      combinedScore: memory.importance * 0.6 + memory.scopeScore * 0.4, // 简化的综合评分
-      recallFrequency: memory.recallCount,
-      updateFrequency: memory.updateCount,
-      recency: this.calculateRecencyScore(memory.createdAt)
-    }));
+    const scoredMemories = recentMemories.map(memory => {
+      const combinedScore = scorer.calculateCombinedScore(memory);
+      return {
+        memory,
+        importanceScore: memory.importance,
+        scopeScore: memory.scopeScore,
+        combinedScore,
+        recallFrequency: memory.recallCount,
+        updateFrequency: memory.updateCount,
+        recency: this.calculateRecencyScore(memory.createdAt)
+      };
+    });
 
     const sortedMem = scoredMemories.sort((a, b) => b.combinedScore - a.combinedScore);
     const candidates = sortedMem.slice(0, 50);
@@ -451,11 +508,111 @@ class DreamingService {
   }
 
   private async extractThemes(memories: LightPhaseResult['sortedMem']): Promise<any[]> {
-    return Promise.resolve([]);
+    this.logger.debug("[DREAMING] Extracting themes from memories", { count: memories.length });
+    
+    // 基于记忆标签和内容提取主题
+    const themes = new Map<string, any>();
+    
+    memories.forEach(item => {
+      const memory = item.memory;
+      
+      // 使用类型作为基础主题
+      const typeTheme = memory.type;
+      if (!themes.has(typeTheme)) {
+        themes.set(typeTheme, {
+          name: typeTheme,
+          description: this.getThemeDescription(typeTheme),
+          relatedMemories: [],
+          confidence: 0.8
+        });
+      }
+      themes.get(typeTheme).relatedMemories.push(memory.id);
+      
+      // 使用标签作为主题
+      memory.tags.forEach((tag: string) => {
+        if (!themes.has(tag) && tag !== memory.type) {
+          themes.set(tag, {
+            name: tag,
+            description: `关于${tag}的记忆`,
+            relatedMemories: [],
+            confidence: 0.6
+          });
+        }
+        if (tag !== memory.type) {
+          themes.get(tag).relatedMemories.push(memory.id);
+        }
+      });
+    });
+    
+    // 过滤只有一个记忆的主题
+    const filteredThemes = Array.from(themes.values())
+      .filter(theme => theme.relatedMemories.length > 1)
+      .slice(0, this.config.output.maxThemes);
+    
+    this.logger.debug("[DREAMING] Extracted themes", { count: filteredThemes.length });
+    return filteredThemes;
+  }
+
+  private getThemeDescription(type: string): string {
+    const descriptions: Record<string, string> = {
+      fact: "客观事实和信息",
+      preference: "用户偏好和喜好",
+      decision: "做出的决定和选择",
+      error: "错误和失败经验",
+      learning: "学到的知识和经验",
+      relationship: "关系和联系信息"
+    };
+    return descriptions[type] || "其他类型的记忆";
   }
 
   private async generateReflections(memories: LightPhaseResult['sortedMem'], themes: any[]): Promise<any[]> {
-    return Promise.resolve([]);
+    this.logger.debug("[DREAMING] Generating reflections on themes", { themeCount: themes.length });
+    
+    const reflections = [];
+    
+    // 为每个主题生成反思
+    themes.forEach((theme, index) => {
+      const relatedMemories = memories.filter(item => 
+        theme.relatedMemories.includes(item.memory.id)
+      );
+      
+      const reflection = this.generateThemeReflection(theme, relatedMemories);
+      reflections.push(reflection);
+    });
+    
+    // 生成整体反思
+    if (memories.length > 5) {
+      const overallReflection = {
+        content: `在这次Dreaming过程中，我处理了${memories.length}条记忆，涉及${themes.length}个主题。这些记忆反映了用户在多个方面的体验和学习，显示出持续的知识积累和经验增长。`,
+        relatedThemes: themes.slice(0, 3).map(t => t.name),
+        confidence: 0.9
+      };
+      reflections.push(overallReflection);
+    }
+    
+    this.logger.debug("[DREAMING] Generated reflections", { count: reflections.length });
+    return reflections.slice(0, this.config.output.maxReflections);
+  }
+
+  private generateThemeReflection(theme: any, memories: any[]): any {
+    const memoryTypes = new Set(memories.map(item => item.memory.type));
+    const typeCount = Array.from(memoryTypes).length;
+    
+    let content = `关于"${theme.name}"主题的反思：`;
+    
+    if (typeCount > 1) {
+      content += ` 这个主题包含了${typeCount}种不同类型的记忆，显示出知识的多样性。`;
+    }
+    
+    if (memories.length > 3) {
+      content += ` 共有${memories.length}条相关记忆，表明这是一个重要的学习领域。`;
+    }
+    
+    return {
+      content,
+      relatedThemes: [theme.name],
+      confidence: theme.confidence * 0.9
+    };
   }
 
   private async writeDreamLog(memoryCount: number, themes: any[], reflections: any[]): Promise<void> {

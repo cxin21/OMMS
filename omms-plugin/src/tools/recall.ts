@@ -1,5 +1,8 @@
 import { Type } from "@sinclair/typebox";
 import { memoryService } from "../services/memory.js";
+import { getLogger } from "../services/logger.js";
+
+const logger = getLogger();
 
 export const ommsRecallTool = {
   name: "omms_recall",
@@ -35,7 +38,7 @@ export const ommsRecallTool = {
 
       return { content: [{ type: "text" as const, text: parts.join("\n") }], details: {} };
     } catch (error) {
-      console.error("[OMMS] recall error:", error);
+      logger.error("[OMMS] recall error:", error);
       return { content: [{ type: "text" as const, text: "Failed to recall memories" }], details: {} };
     }
   },

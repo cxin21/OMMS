@@ -1,5 +1,5 @@
-import type { ExtractedFact, MemoryType } from "../types/index.js";
-import { getLogger } from "./logger.js";
+import type { ExtractedFact, MemoryType, LLMExtractionInput, LLMExtractionOutput, LLMExtractionFact } from "../../types/src/index.js";
+import { getLogger } from "../logging/src/logger.js";
 
 export interface LLMConfig {
   provider: string;
@@ -56,6 +56,62 @@ export class LLMExtractor {
       return this.parseResponse(response);
     } catch (error) {
       this.logger.error("LLM extraction failed", error);
+      return [];
+    }
+  }
+
+  async extractFacts(input: LLMExtractionInput): Promise<LLMExtractionOutput> {
+    this.logger.debug("[LLM] Starting extractFacts", { contextLength: input.context.length });
+
+    if (!this.config) {
+      this.logger.warn("[LLM] Extractor not configured");
+      return { success: false, error: "LLM Extractor not configured" };
+    }
+
+    const conversation = input.context.slice(0, 4000);
+
+    try {
+      const response = await this.callLLM(conversation);
+      const facts = this.parseFactsResponse(response);
+      
+      this.logger.debug("[LLM] extractFacts completed", { 
+        success: true, 
+        factCount: facts.length 
+      });
+      
+      return { success: true, facts };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error("[LLM] extractFacts failed", { error: errorMessage });
+      return { success: false, error: errorMessage };
+    }
+  }
+
+  private parseFactsResponse(response: string): LLMExtractionFact[] {
+    try {
+      const cleaned = response.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+
+      const results: LLMExtractionFact[] = [];
+
+      for (const item of parsed) {
+        if (item.content && item.type) {
+          results.push({
+            content: String(item.content).slice(0, 500),
+            type: this.validateType(String(item.type)),
+            confidence: Number(item.confidence) || 0.6,
+            source: "llm",
+          });
+        }
+      }
+
+      return results.slice(0, 20);
+    } catch (error) {
+      this.logger.error("[LLM] Failed to parse facts response", { error });
       return [];
     }
   }
@@ -134,6 +190,10 @@ export class LLMExtractor {
     if (lower.includes("relation") || lower.includes("friend") || lower.includes("partner") || lower.includes("colleague") || lower.includes("team")) return "relationship";
     return "fact";
   }
+
+  isAvailable(): boolean {
+    return this.config !== null;
+  }
 }
 
 let extractorInstance: LLMExtractor | null = null;
@@ -143,6 +203,10 @@ export function getLLMExtractor(): LLMExtractor {
     extractorInstance = new LLMExtractor();
   }
   return extractorInstance;
+}
+
+export function getLLMService(): LLMExtractor {
+  return getLLMExtractor();
 }
 
 export function configureLLMExtractor(config: LLMConfig): void {

@@ -2,16 +2,19 @@ import type {
   Memory,
   MemoryType,
   MemoryScope,
+  MemoryBlock,
   RecallResult,
   MemoryStats,
   OMMSConfig,
   ExtractedFact,
-} from "../types/index.js";
-import { scorer } from "./scorer.js";
-import { profileEngine } from "./profile.js";
-import { getEmbeddingService } from "./embedding.js";
-import { getLogger } from "./logger.js";
+} from "../../types/src/index.js";
+import { scorer, ScorerConfig } from "./scorer.js";
+import { profileEngine } from "../profile/src/profile.js";
+import { getEmbeddingService } from "../vector-search/src/embedding.js";
+import { getLogger } from "../logging/src/logger.js";
 import { persistence } from "./persistence.js";
+import { getGraphEngine } from "../knowledge-graph/src/graph.js";
+import { getLLMService } from "../llm/src/llm.js";
 
 const IN_MEMORY_STORE = new Map<string, Memory>();
 
@@ -38,6 +41,7 @@ export class MemoryService {
 
       // 使用实际维度初始化持久化层
       const actualDimensions = this.config.embedding?.dimensions || 1024;
+      persistence.updateConfig(this.config);
       await persistence.initialize(actualDimensions);
       
       const memories = await persistence.loadAll();
@@ -70,6 +74,21 @@ export class MemoryService {
 
   updateConfig(config: OMMSConfig): void {
     this.config = { ...this.config, ...config };
+
+    const scorerConfig: Partial<ScorerConfig> = {};
+    if (config.scopeUpgrade) {
+      scorerConfig.scopeUpgrade = config.scopeUpgrade;
+    }
+    if (config.forgetPolicy) {
+      scorerConfig.forgetPolicy = config.forgetPolicy;
+    }
+    if (config.boostPolicy) {
+      scorerConfig.boostPolicy = config.boostPolicy;
+    }
+    if (config.recall) {
+      scorerConfig.recall = config.recall;
+    }
+    scorer.configure(scorerConfig);
 
     this.initialize().catch((error) => {
       this.logger.error("Failed to initialize memory service", {
@@ -104,6 +123,17 @@ export class MemoryService {
         });
       }
     }
+
+    this.logger.info("[CONFIG] Scorer configured from OMMSConfig", {
+      method: "updateConfig",
+      params: {},
+      returns: "void",
+      data: { scorerConfig }
+    });
+  }
+
+  getConfig(): OMMSConfig {
+    return { ...this.config };
   }
 
   async extractFromMessages(
@@ -118,6 +148,89 @@ export class MemoryService {
       data: { messagesCount: messages.length },
     });
 
+    const enableLLMExtraction = this.config.enableLLMExtraction || false;
+
+    let results: ExtractedFact[] = [];
+
+    if (enableLLMExtraction) {
+      try {
+        results = await this.extractWithLLM(messages);
+        this.logger.info("[EXTRACT] LLM extraction completed", {
+          method: "extractFromMessages",
+          params: { messagesCount: messages.length },
+          returns: `ExtractedFact[${results.length}]`,
+          data: { method: "LLM", count: results.length },
+        });
+      } catch (error) {
+        this.logger.warn("[EXTRACT] LLM extraction failed, falling back to regex", error);
+        results = [];
+      }
+    }
+
+    if (results.length === 0) {
+      results = this.extractWithRegex(messages);
+      this.logger.info("[EXTRACT] Regex extraction completed", {
+        method: "extractFromMessages",
+        params: { messagesCount: messages.length },
+        returns: `ExtractedFact[${results.length}]`,
+        data: { method: "regex", count: results.length },
+      });
+    }
+
+    this.logger.debug("Extraction complete", {
+      method: "extractFromMessages",
+      params: { messagesCount: messages.length },
+      returns: `ExtractedFact[${results.length}]`,
+      data: { input: messages.length, output: results.length },
+    });
+
+    return results.slice(0, this.config.maxExtractionResults || 50);
+  }
+
+  private async extractWithLLM(
+    messages: Array<{ role: string; content: string }>
+  ): Promise<ExtractedFact[]> {
+    const llm = getLLMService();
+
+    if (!llm.isAvailable()) {
+      this.logger.warn("[EXTRACT] LLM service not available");
+      return [];
+    }
+
+    try {
+      const extracted = await llm.extract(messages);
+      const results: ExtractedFact[] = [];
+
+      for (const item of extracted) {
+        const importance = scorer.score({
+          content: item.content,
+          type: item.type,
+          confidence: item.confidence,
+          explicit: false,
+          relatedCount: 0,
+          sessionLength: messages.length,
+          turnCount: 1,
+        });
+
+        results.push({
+          content: item.content,
+          type: item.type,
+          confidence: item.confidence,
+          source: item.source,
+          importance,
+        });
+      }
+
+      return results;
+    } catch (error) {
+      this.logger.error("[EXTRACT] LLM extraction error", error);
+      return [];
+    }
+  }
+
+  private extractWithRegex(
+    messages: Array<{ role: string; content: string }>
+  ): ExtractedFact[] {
     const rules = [
       {
         pattern: /(?:决定|选了|采用|确定|拍板|结论|最终方案|已决定|选定了|已采用|已确定)/gi,
@@ -180,14 +293,7 @@ export class MemoryService {
       }
     }
 
-    this.logger.debug("Extraction complete", {
-      method: "extractFromMessages",
-      params: { messagesCount: messages.length },
-      returns: `ExtractedFact[${results.length}]`,
-      data: { input: messages.length, output: results.length },
-    });
-
-    return results.slice(0, 50);
+    return results;
   }
 
   async store(params: {
@@ -234,6 +340,40 @@ export class MemoryService {
     };
 
     IN_MEMORY_STORE.set(memory.id, memory);
+    
+    // 提取知识图谱实体和关系
+    if (this.config.enableGraphEngine) {
+      try {
+        const graphEngine = getGraphEngine();
+        await graphEngine.process(memory);
+        
+        this.logger.debug("[STORE] Knowledge graph processing completed", {
+          method: "store",
+          params: {
+            ...params,
+            content: String(params.content).slice(0, 50),
+          },
+          returns: "Memory",
+          agentId: params.agentId,
+          sessionId: params.sessionId,
+          memoryId: memory.id,
+          graphProcessing: true,
+        });
+      } catch (error) {
+        this.logger.warn("[STORE] Failed to process knowledge graph", {
+          method: "store",
+          params: {
+            ...params,
+            content: String(params.content).slice(0, 50),
+          },
+          returns: "Memory",
+          agentId: params.agentId,
+          sessionId: params.sessionId,
+          memoryId: memory.id,
+          error: String(error),
+        });
+      }
+    }
     this.logger.info("[STORE] Memory created", {
       method: "store",
       params: {
@@ -326,6 +466,7 @@ export class MemoryService {
       scope?: MemoryScope | "all";
       limit?: number;
       boostOnRecall?: boolean;
+      isAutoRecall?: boolean; // 新增标志：是否是自动召回
     }
   ): Promise<RecallResult & { boosted: number }> {
     this.logger.info("[RECALL] Starting recall", {
@@ -336,7 +477,17 @@ export class MemoryService {
       sessionId: options?.sessionId,
     });
 
-    const limit = options?.limit || 10;
+    // 根据调用类型选择合适的limit
+    let limit: number;
+    if (options?.limit) {
+      limit = options.limit;
+    } else if (options?.isAutoRecall) {
+      limit = this.config.recall?.autoRecallLimit ?? 5;
+    } else if (this.config.search?.limit) {
+      limit = this.config.search.limit;
+    } else {
+      limit = this.config.recall?.manualRecallLimit ?? 10;
+    }
     const memories = [...IN_MEMORY_STORE.values()];
 
     if (memories.length === 0) {
@@ -394,21 +545,31 @@ export class MemoryService {
     const currentAgentId = options?.agentId || "default";
     const scoredMemories: Array<{ memory: Memory; score: number; priority: number }> = [];
 
+    // 获取搜索配置
+    const vectorWeight = this.config.search?.vectorWeight ?? 0.7;
+    const keywordWeight = this.config.search?.keywordWeight ?? 0.3;
+    const minSimilarity = this.config.recall?.minSimilarity ?? 0.3;
+
     for (const memory of memories) {
-      let similarity = 0;
+      let vectorSimilarity = 0;
+      let keywordSimilarity = this.calculateSimilarity(query, memory);
 
       if (searchResults.length > 0) {
         const vectorResult = searchResults.find(r => r.id === memory.id);
         if (vectorResult) {
-          similarity = vectorResult.score;
+          vectorSimilarity = vectorResult.score;
         }
       }
 
-      if (similarity === 0) {
-        similarity = this.calculateSimilarity(query, memory);
+      // 混合搜索权重
+      const finalSimilarity = vectorSimilarity * vectorWeight + keywordSimilarity * keywordWeight;
+
+      // 应用相似度阈值
+      if (finalSimilarity < minSimilarity) {
+        continue;
       }
 
-      const finalScore = scorer.calculateRecallPriority(memory, currentAgentId, similarity);
+      const finalScore = scorer.calculateRecallPriority(memory, currentAgentId, finalSimilarity);
 
       scoredMemories.push({ memory, score: finalScore, priority: finalScore });
     }
@@ -452,7 +613,8 @@ export class MemoryService {
           boosted++;
         }
 
-        const newScopeScore = scorer.boostScopeScore(memory, currentAgentId, false);
+        const isEffectiveUse = this.isEffectiveUse(memory, currentAgentId, query);
+        const newScopeScore = scorer.boostScopeScore(memory, currentAgentId, isEffectiveUse);
         if (newScopeScore !== memory.scopeScore) {
           memory.scopeScore = newScopeScore;
           this.logger.debug("[RECALL] Scope score boosted", {
@@ -464,7 +626,8 @@ export class MemoryService {
             memoryId: memory.id,
             data: {
               oldScore: memory.scopeScore - (newScopeScore - memory.scopeScore),
-              newScore: newScopeScore
+              newScore: newScopeScore,
+              isEffectiveUse
             }
           });
         }
@@ -520,10 +683,36 @@ export class MemoryService {
     return 0.1;
   }
 
+  private isEffectiveUse(memory: Memory, agentId: string, query: string): boolean {
+    const queryLower = query.toLowerCase();
+    const contentLower = memory.content.toLowerCase();
+
+    const hasKeywordMatch = queryLower.split(/\s+/).some(word => 
+      word.length > 3 && contentLower.includes(word)
+    );
+
+    const hasTypeRelevance = queryLower.includes(memory.type);
+
+    const hasTagMatch = memory.tags.some(tag => 
+      queryLower.includes(tag.toLowerCase())
+    );
+
+    const isEffective = hasKeywordMatch || hasTypeRelevance || hasTagMatch;
+
+    this.logger.debug("[RECALL] Effective use check", {
+      method: "isEffectiveUse",
+      params: { memoryId: memory.id, agentId, query: query.slice(0, 50) },
+      returns: { isEffective, hasKeywordMatch, hasTypeRelevance, hasTagMatch }
+    });
+
+    return isEffective;
+  }
+
   getAll(options?: {
     agentId?: string;
     sessionId?: string;
     scope?: MemoryScope | "all";
+    block?: MemoryBlock | "all";
     limit?: number;
   }): Memory[] {
     let memories = [...IN_MEMORY_STORE.values()];
@@ -540,12 +729,16 @@ export class MemoryService {
       memories = memories.filter(m => m.scope === options.scope);
     }
 
+    if (options?.block && options.block !== "all") {
+      memories = memories.filter(m => m.block === options.block);
+    }
+
     memories.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     return memories.slice(0, options?.limit);
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string): Promise<boolean> {
     const memory = IN_MEMORY_STORE.get(id);
     if (memory) {
       IN_MEMORY_STORE.delete(id);
@@ -556,22 +749,24 @@ export class MemoryService {
         scope: memory.scope,
         content: memory.content.slice(0, 50) 
       });
+      return true;
     } else {
       this.logger.warn("Attempted to delete non-existent memory", { id });
+      return false;
     }
   }
 
   async consolidate(params?: {
     agentId?: string;
     sessionId?: string;
-    scope?: MemoryScope;
+    scope?: MemoryScope | "all";
   }): Promise<{ archived: number; deleted: number; promoted: number }> {
-    this.logger.info("Starting consolidation", { agentId: params?.agentId, sessionId: params?.sessionId, scope: params?.scope || "session" });
+    this.logger.info("Starting consolidation", { agentId: params?.agentId, sessionId: params?.sessionId, scope: params?.scope || "all" });
 
     const memories = this.getAll({
       agentId: params?.agentId,
       sessionId: params?.sessionId,
-      scope: params?.scope || "session",
+      scope: params?.scope || "all",
     });
 
     let archived = 0;
@@ -645,6 +840,11 @@ export class MemoryService {
         }
         memory.usedByAgents.push(agentId);
         updates.usedByAgents = memory.usedByAgents;
+        this.logger.debug("Added agent to usedByAgents", {
+          method: "boostScopeScore",
+          params: { memoryId: id, agentId, isEffectiveUse },
+          data: { usedByAgentsCount: memory.usedByAgents.length }
+        });
       }
 
       this.logger.info("Scope score boosted", {
@@ -657,6 +857,12 @@ export class MemoryService {
 
       return await this.update(id, updates);
     }
+
+    this.logger.debug("Scope score not boosted", {
+      method: "boostScopeScore",
+      params: { memoryId: id, agentId, isEffectiveUse },
+      data: { currentScopeScore: oldScopeScore }
+    });
 
     return memory;
   }
@@ -676,9 +882,12 @@ export class MemoryService {
     IN_MEMORY_STORE.set(id, updated);
     this.logger.debug("Memory updated", { id, updates: Object.keys(updates) });
 
-    persistence.update(updated).catch((error) => {
+    try {
+      await persistence.update(updated);
+      this.logger.debug("Memory persisted successfully", { id });
+    } catch (error) {
       this.logger.error("Failed to persist memory update", error);
-    });
+    }
 
     return updated;
   }

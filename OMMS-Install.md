@@ -1,159 +1,7 @@
 # OMMS 安装配置文档
 
-**版本**: 3.0.0
+**版本**: 3.5.0
 **日期**: 2026-04-12
-
----
-
-## 九、Dreaming 机制配置
-
-Dreaming 是一个实验性的智能记忆巩固系统，需要在配置中明确启用。
-
-### 9.1 基础配置
-
-```json
-{
-  "plugins": {
-    "entries": {
-      "omms": {
-        "config": {
-          "dreaming": {
-            "enabled": false,
-            "schedule": {
-              "enabled": true,
-              "time": "02:00",
-              "timezone": "Asia/Shanghai"
-            },
-            "memoryThreshold": {
-              "enabled": true,
-              "minMemories": 50,
-              "maxAgeHours": 24
-            },
-            "sessionTrigger": {
-              "enabled": true,
-              "afterSessions": 10
-            },
-            "promotion": {
-              "minScore": 0.7,
-              "weights": {
-                "recallFrequency": 0.25,
-                "relevance": 0.20,
-                "diversity": 0.15,
-                "recency": 0.15,
-                "consolidation": 0.15,
-                "conceptualRichness": 0.10
-              }
-            },
-            "output": {
-              "path": "~/.openclaw/memory/DREAMS.md",
-              "maxReflections": 5,
-              "maxThemes": 10
-            },
-            "logging": {
-              "level": "info",
-              "consoleOutput": true,
-              "fileOutput": true,
-              "outputPath": "~/.openclaw/omms-dreaming.log",
-              "maxFileSize": "10MB",
-              "maxFiles": 5
-            }
-          }
-        }
-      }
-    }
-  }
-}
-```
-
-### 9.2 配置参数详解
-
-#### 9.2.1 基础设置
-
-| 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
-| `enabled` | boolean | 是否启用 Dreaming 机制 | `false` |
-| `schedule.enabled` | boolean | 是否启用定时调度 | `true` |
-| `schedule.time` | string | 每天定时触发时间 | `"02:00"` |
-| `schedule.timezone` | string | 时区 | `"Asia/Shanghai"` |
-
-#### 9.2.2 触发条件
-
-| 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
-| `memoryThreshold.enabled` | boolean | 是否启用记忆阈值触发 | `true` |
-| `memoryThreshold.minMemories` | number | 最小记忆数量阈值 | `50` |
-| `memoryThreshold.maxAgeHours` | number | 记忆最大年龄（小时） | `24` |
-| `sessionTrigger.enabled` | boolean | 是否启用会话触发 | `true` |
-| `sessionTrigger.afterSessions` | number | 会话触发数量 | `10` |
-
-#### 9.2.3 提升评分
-
-| 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
-| `promotion.minScore` | number | 最低提升分数 | `0.7` |
-| `promotion.weights.recallFrequency` | number | 召回频率权重 | `0.25` |
-| `promotion.weights.relevance` | number | 相关性权重 | `0.20` |
-| `promotion.weights.diversity` | number | 多样性权重 | `0.15` |
-| `promotion.weights.recency` | number | 新近度权重 | `0.15` |
-| `promotion.weights.consolidation` | number | 整合度权重 | `0.15` |
-| `promotion.weights.conceptualRichness` | number | 概念丰富度权重 | `0.10` |
-
-#### 9.2.4 输出配置
-
-| 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
-| `output.path` | string | DREAMS.md 文件路径 | `"~/.openclaw/memory/DREAMS.md"` |
-| `output.maxReflections` | number | 最大反思数量 | `5` |
-| `output.maxThemes` | number | 最大主题数量 | `10` |
-
-#### 9.2.5 日志配置
-
-| 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
-| `logging.level` | string | 日志级别 | `"info"` |
-| `logging.consoleOutput` | boolean | 控制台输出 | `true` |
-| `logging.fileOutput` | boolean | 文件输出 | `true` |
-| `logging.outputPath` | string | 日志文件路径 | `"~/.openclaw/omms-dreaming.log"` |
-| `logging.maxFileSize` | string | 最大文件大小 | `"10MB"` |
-| `logging.maxFiles` | number | 保留文件数量 | `5` |
-
-### 9.3 启用 Dreaming 机制
-
-1. 在 `~/.openclaw/openclaw.json` 中添加配置
-2. 重启 OpenClaw Gateway
-
-```bash
-# 查看当前配置
-cat ~/.openclaw/openclaw.json
-
-# 重启 OpenClaw
-openclaw gateway restart
-```
-
-### 9.4 使用 Dreaming 工具
-
-```bash
-# 查看 Dreaming 状态
-omms_dreaming status
-
-# 手动启动 Dreaming
-omms_dreaming start
-
-# 停止 Dreaming
-omms_dreaming stop
-```
-
-### 9.5 查看 DREAMS.md 文件
-
-```bash
-cat ~/.openclaw/memory/DREAMS.md
-```
-
-DREAMS.md 包含以下信息：
-- 记忆数量统计
-- 提取的主题
-- 生成的反思
-- 阶段处理信息
 
 ---
 
@@ -234,6 +82,7 @@ openclaw gateway start
           "enableVectorSearch": true,
           "enableGraphEngine": false,
           "maxMemoriesPerSession": 50,
+          "maxExtractionResults": 50,
           "webUiPort": 3456,
           "llm": {
             "provider": "openai-compatible",
@@ -247,16 +96,8 @@ openclaw gateway start
             "baseURL": "https://api.siliconflow.cn/v1",
             "apiKey": "${SILICONFLOW_API_KEY}"
           },
-          "search": {
-            "vectorWeight": 0.7,
-            "keywordWeight": 0.3,
-            "limit": 10
-          },
-          "scopeUpgrade": {
-            "agentThreshold": 0.3,
-            "globalThreshold": 0.6,
-            "minRecallCount": 2,
-            "minAgentCount": 2
+          "vectorStore": {
+            "dbPath": "~/.openclaw/omms-data"
           },
           "forgetPolicy": {
             "archiveThreshold": 0.2,
@@ -264,20 +105,6 @@ openclaw gateway start
             "archiveUpdateDays": 14,
             "deleteThreshold": 0.1,
             "deleteDays": 180
-          },
-          "boostPolicy": {
-            "boostEnabled": true,
-            "lowBoost": 0.1,
-            "mediumBoost": 0.08,
-            "highBoost": 0.05,
-            "maxImportance": 1.0
-          },
-          "recall": {
-            "autoRecallLimit": 5,
-            "manualRecallLimit": 10,
-            "minSimilarity": 0.5,
-            "boostOnRecall": true,
-            "boostScopeScoreOnRecall": true
           },
           "logging": {
             "level": "info",
@@ -288,7 +115,118 @@ openclaw gateway start
     }
   },
   "tools": {
-    "allow": ["omms_recall", "omms_write", "omms_stats", "omms_logs", "omms_graph"]
+    "allow": ["memory_recall", "memory_store", "memory_forget", "omms_stats", "omms_logs", "omms_graph"]
+  },
+  "plugins": {
+    "entries": {
+      "omms": {
+        "enabled": true,
+        "config": {
+          "enableAutoCapture": true,
+          "enableAutoRecall": true,
+          "enableLLMExtraction": true,
+          "enableProfile": true,
+          "enableVectorSearch": true,
+          "enableGraphEngine": false,
+          "maxMemoriesPerSession": 50,
+          "autoArchiveThreshold": 0.2,
+          "maxExtractionResults": 50,
+          "webUiPort": 3456,
+          "search": {
+            "vectorWeight": 0.7,
+            "keywordWeight": 0.3,
+            "limit": 10
+          },
+          "recall": {
+            "autoRecallLimit": 5,
+            "manualRecallLimit": 10,
+            "minSimilarity": 0.3,
+            "boostOnRecall": true,
+            "boostScopeScoreOnRecall": true
+          },
+          "boostPolicy": {
+            "boostEnabled": true,
+            "lowBoost": 0.1,
+            "mediumBoost": 0.08,
+            "highBoost": 0.05,
+            "maxImportance": 0.8
+          },
+          "forgetPolicy": {
+            "archiveThreshold": 0.2,
+            "archiveDays": 30,
+            "archiveUpdateDays": 14,
+            "deleteThreshold": 0.1,
+            "deleteDays": 180
+          },
+          "scopeUpgrade": {
+            "agentThreshold": 0.3,
+            "globalThreshold": 0.6,
+            "minRecallCount": 2,
+            "minAgentCount": 2
+          },
+          "dreaming": {
+            "enabled": true,
+            "schedule": {
+              "enabled": true,
+              "time": "02:00",
+              "timezone": "Asia/Shanghai"
+            },
+            "memoryThreshold": {
+              "enabled": true,
+              "minMemories": 50,
+              "maxAgeHours": 24
+            },
+            "sessionTrigger": {
+              "enabled": true, 
+              "afterSessions": 10
+            },
+            "promotion": {
+              "minScore": 0.7,
+              "weights": {
+                "recallFrequency": 0.25,
+                "relevance": 0.20,
+                "diversity": 0.15,
+                "recency": 0.15,
+                "consolidation": 0.15,
+                "conceptualRichness": 0.10
+              }
+            },
+            "output": {
+              "path": "~/.openclaw/memory/DREAMS.md",
+              "maxReflections": 5,
+              "maxThemes": 10
+            },
+            "logging": {
+              "level": "info",
+              "consoleOutput": true,
+              "fileOutput": true,
+              "outputPath": "~/.openclaw/omms-dreaming.log",
+              "maxFileSize": "10MB",
+              "maxFiles": 5
+            }
+          },
+          "llm": {
+            "provider": "openai-compatible",
+            "model": "abab6.5s-chat",
+            "baseURL": "https://api.minimax.chat/v1",
+            "apiKey": "${MINIMAX_API_KEY}"
+          },
+          "embedding": {
+            "model": "BAAI/bge-m3",
+            "dimensions": 1024,
+            "baseURL": "https://api.siliconflow.cn/v1",
+            "apiKey": "${SILICONFLOW_API_KEY}"
+          },
+          "vectorStore": {
+            "dbPath": "~/.openclaw/omms-data"
+          },
+          "logging": {
+            "level": "info",
+            "output": "console"
+          }
+        }
+      }
+    }
   }
 }
 ```
@@ -306,20 +244,81 @@ openclaw gateway start
 | `enableLLMExtraction` | boolean | true | LLM 智能提取 |
 | `enableVectorSearch` | boolean | true | 向量搜索 |
 | `enableProfile` | boolean | true | 用户 Profile |
+| `enableSessionSummary` | boolean | true | 会话摘要功能（预留字段） |
 | `enableGraphEngine` | boolean | false | 知识图谱引擎 |
 | `maxMemoriesPerSession` | number | 50 | 每会话最大记忆数 |
+| `autoArchiveThreshold` | number | 0.2 | 自动归档的重要性评分阈值 |
+| `maxExtractionResults` | number | 50 | 每次提取最大记忆数 |
 | `webUiPort` | number | 3456 | Web UI 端口 |
 
-### 3.2 作用域升级配置
+### 3.2 搜索配置
 
 | 选项 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `scopeUpgrade.agentThreshold` | number | 0.3 | 升级到 agent 作用域的 scopeScore 阈值 |
-| `scopeUpgrade.globalThreshold` | number | 0.6 | 升级到 global 作用域的 scopeScore 阈值 |
-| `scopeUpgrade.minRecallCount` | number | 2 | 升级前的最小召回次数 |
-| `scopeUpgrade.minAgentCount` | number | 2 | 升级到 global 前的最小不同 Agent 数量 |
+| `search.vectorWeight` | number | 0.7 | 向量搜索权重（0-1） |
+| `search.keywordWeight` | number | 0.3 | 关键词搜索权重（0-1） |
+| `search.limit` | number | 10 | 默认搜索结果限制 |
 
-### 3.3 遗忘策略配置
+### 3.3 召回配置
+
+| 选项 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `recall.autoRecallLimit` | number | 5 | 自动召回时返回的记忆数量 |
+| `recall.manualRecallLimit` | number | 10 | 手动召回时返回的记忆数量 |
+| `recall.minSimilarity` | number | 0.3 | 最小相似度阈值（0-1） |
+| `recall.boostOnRecall` | boolean | true | 召回时是否提升重要性 |
+| `recall.boostScopeScoreOnRecall` | boolean | true | 召回时是否提升作用域评分 |
+
+### 3.4 Dreaming机制配置
+
+| 选项 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `dreaming.enabled` | boolean | true | 是否启用Dreaming机制 |
+| `dreaming.schedule.enabled` | boolean | true | 是否启用定时调度 |
+| `dreaming.schedule.time` | string | "02:00" | 定时触发时间（HH:MM格式） |
+| `dreaming.schedule.timezone` | string | "Asia/Shanghai" | 时区设置 |
+| `dreaming.memoryThreshold.enabled` | boolean | true | 是否启用内存阈值触发 |
+| `dreaming.memoryThreshold.minMemories` | number | 50 | 触发Dreaming的最小记忆数量 |
+| `dreaming.memoryThreshold.maxAgeHours` | number | 24 | 记忆的最大年龄（小时） |
+| `dreaming.sessionTrigger.enabled` | boolean | true | 是否启用会话计数触发 |
+| `dreaming.sessionTrigger.afterSessions` | number | 10 | 触发Dreaming的会话数量 |
+| `dreaming.promotion.minScore` | number | 0.7 | 记忆提升的最低分数阈值 |
+| `dreaming.promotion.weights.recallFrequency` | number | 0.25 | 召回频率权重 |
+| `dreaming.promotion.weights.relevance` | number | 0.20 | 相关性权重 |
+| `dreaming.promotion.weights.diversity` | number | 0.15 | 多样性权重 |
+| `dreaming.promotion.weights.recency` | number | 0.15 | 时效性权重 |
+| `dreaming.promotion.weights.consolidation` | number | 0.15 | 整合性权重 |
+| `dreaming.promotion.weights.conceptualRichness` | number | 0.10 | 概念丰富度权重 |
+| `dreaming.output.path` | string | "~/.openclaw/memory/DREAMS.md" | Dreaming结果存储路径 |
+| `dreaming.output.maxReflections` | number | 5 | 最大反思数量 |
+| `dreaming.output.maxThemes` | number | 10 | 最大主题数量 |
+| `dreaming.logging.level` | string | "info" | 日志级别 |
+| `dreaming.logging.consoleOutput` | boolean | true | 控制台输出 |
+| `dreaming.logging.fileOutput` | boolean | true | 文件输出 |
+| `dreaming.logging.outputPath` | string | "~/.openclaw/omms-dreaming.log" | 日志文件路径 |
+| `dreaming.logging.maxFileSize` | string | "10MB" | 最大文件大小 |
+| `dreaming.logging.maxFiles` | number | 5 | 日志文件数量 |
+
+### 3.5 强化策略配置
+
+| 选项 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `boostPolicy.boostEnabled` | boolean | true | 是否启用强化机制 |
+| `boostPolicy.lowBoost` | number | 0.1 | 低重要性记忆的强化增量（< 0.3） |
+| `boostPolicy.mediumBoost` | number | 0.08 | 中等重要性记忆的强化增量（0.3-0.5） |
+| `boostPolicy.highBoost` | number | 0.05 | 高重要性记忆的强化增量（0.5-0.8） |
+| `boostPolicy.maxImportance` | number | 0.8 | 强化的最高重要性限制 |
+
+### 3.6 作用域升级策略配置
+
+| 选项 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `scopeUpgrade.agentThreshold` | number | 0.3 | 从session到agent作用域的scopeScore阈值 |
+| `scopeUpgrade.globalThreshold` | number | 0.6 | 从agent到global作用域的scopeScore阈值 |
+| `scopeUpgrade.minRecallCount` | number | 2 | 升级到agent作用域的最低召回次数 |
+| `scopeUpgrade.minAgentCount` | number | 2 | 升级到global作用域的最低Agent数量 |
+
+### 3.7 遗忘策略配置
 
 | 选项 | 类型 | 默认 | 说明 |
 |------|------|------|------|
@@ -329,27 +328,7 @@ openclaw gateway start
 | `forgetPolicy.deleteThreshold` | number | 0.1 | 触发删除检查的重要性阈值 |
 | `forgetPolicy.deleteDays` | number | 180 | 触发删除的未更新天数 |
 
-### 3.4 强化策略配置
-
-| 选项 | 类型 | 默认 | 说明 |
-|------|------|------|------|
-| `boostPolicy.boostEnabled` | boolean | true | 是否启用自动强化 |
-| `boostPolicy.lowBoost` | number | 0.1 | importance < 0.3 时的强化增量 |
-| `boostPolicy.mediumBoost` | number | 0.08 | importance 0.3-0.5 时的强化增量 |
-| `boostPolicy.highBoost` | number | 0.05 | importance 0.5-0.8 时的强化增量 |
-| `boostPolicy.maxImportance` | number | 1.0 | importance 上限 |
-
-### 3.5 召回策略配置
-
-| 选项 | 类型 | 默认 | 说明 |
-|------|------|------|------|
-| `recall.autoRecallLimit` | number | 5 | 自动召回条数 |
-| `recall.manualRecallLimit` | number | 10 | 手动召回默认条数 |
-| `recall.minSimilarity` | number | 0.5 | 最小相似度阈值 |
-| `recall.boostOnRecall` | boolean | true | 召回时是否强化 importance |
-| `recall.boostScopeScoreOnRecall` | boolean | true | 召回时是否强化 scopeScore |
-
-### 3.6 LLM 配置
+### 3.3 LLM 配置
 
 ```typescript
 llm: {
@@ -360,7 +339,7 @@ llm: {
 }
 ```
 
-### 3.7 Embedding 配置
+### 3.4 Embedding 配置
 
 ```typescript
 embedding: {
@@ -370,6 +349,21 @@ embedding: {
   apiKey: string;         // API Key
 }
 ```
+
+### 3.5 向量存储配置
+
+```typescript
+vectorStore: {
+  dbPath: string;        // "~/.openclaw/omms-data"
+}
+```
+
+### 3.6 日志配置
+
+| 选项 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `logging.level` | string | "info" | 日志级别 (debug/info/warn/error) |
+| `logging.output` | string | "console" | 输出方式 (console/file/both) |
 
 ---
 
@@ -531,20 +525,7 @@ lsof -i :3456
 openclaw gateway restart
 ```
 
-### 8.4 Q: 如何调整记忆召回数量？
-
-编辑配置文件：
-
-```json
-{
-  "recall": {
-    "autoRecallLimit": 5,
-    "manualRecallLimit": 10
-  }
-}
-```
-
-### 8.5 Q: 如何调整遗忘策略？
+### 8.4 Q: 如何调整遗忘策略？
 
 编辑配置文件：
 

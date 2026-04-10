@@ -160,6 +160,87 @@ export class WebServer {
         return;
       }
 
+      if (path === "update" && req.method === "POST") {
+        let body = "";
+        for await (const chunk of req) {
+          body += chunk;
+        }
+        const { id, content } = JSON.parse(body);
+        const result = await this.api.updateMemory({ id, content });
+        res.writeHead(200);
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      if (path === "dreaming/status" && req.method === "GET") {
+        const result = await this.api.getDreamingStatus();
+        res.writeHead(200);
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      if (path === "dreaming/start" && req.method === "POST") {
+        const result = await this.api.startDreaming();
+        res.writeHead(200);
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      if (path === "dreaming/stop" && req.method === "POST") {
+        const result = await this.api.stopDreaming();
+        res.writeHead(200);
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      // 知识图谱相关接口
+      if (path === "graph/stats" && req.method === "GET") {
+        const result = await this.api.getGraphStats();
+        res.writeHead(200);
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      if (path === "graph/nodes" && req.method === "GET") {
+        const result = await this.api.getGraphNodes();
+        res.writeHead(200);
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      if (path === "graph/edges" && req.method === "GET") {
+        const result = await this.api.getGraphEdges();
+        res.writeHead(200);
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      if (path === "graph/search" && req.method === "GET") {
+        const searchParams = new URL(req.url || "/", `http://localhost:${this.port}`).searchParams;
+        const query = searchParams.get("q") || "";
+        const result = await this.api.searchGraph(query);
+        res.writeHead(200);
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      if (path === "graph/subgraph" && req.method === "GET") {
+        const searchParams = new URL(req.url || "/", `http://localhost:${this.port}`).searchParams;
+        const centerId = searchParams.get("id") || "";
+        const depth = parseInt(searchParams.get("depth") || "2");
+        const result = await this.api.getSubgraph(centerId, depth);
+        res.writeHead(200);
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      if (path === "graph/clear" && req.method === "POST") {
+        const result = await this.api.clearGraph();
+        res.writeHead(200);
+        res.end(JSON.stringify(result));
+        return;
+      }
+
       if (path === "saveConfig" && req.method === "POST") {
         let body = "";
         for await (const chunk of req) {

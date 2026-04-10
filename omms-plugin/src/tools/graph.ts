@@ -1,5 +1,6 @@
 import { Type } from "@sinclair/typebox";
-import { graphEngine } from "../services/graph.js";
+import { getGraphEngine } from "../services/graph.js";
+import type { GraphNode, GraphEdge } from "../types/index.js";
 
 export const ommsGraphTool = {
   name: "omms_graph",
@@ -27,6 +28,7 @@ Use this when:
 
   async execute(_id: string, params: { query: string; depth?: number }) {
     try {
+      const graphEngine = getGraphEngine();
       const result = await graphEngine.search(params.query);
 
       if (result.nodes.length === 0) {
@@ -53,8 +55,8 @@ Use this when:
         lines.push("\n**Relationships:**");
         for (const path of result.paths.slice(0, 10)) {
           for (const edge of path) {
-            const source = result.nodes.find((n) => n.id === edge.source);
-            const target = result.nodes.find((n) => n.id === edge.target);
+            const source = result.nodes.find((n: GraphNode) => n.id === edge.source);
+            const target = result.nodes.find((n: GraphNode) => n.id === edge.target);
             if (source && target) {
               lines.push(`- ${source.name} --[${edge.type}]--> ${target.name}`);
             }

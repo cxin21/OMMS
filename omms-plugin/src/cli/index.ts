@@ -19,6 +19,27 @@ export async function handleOmmsCommand(args: string[], ctx: CLIContext): Promis
   }
 
   switch (command) {
+    case "help":
+    case undefined:
+      ctx.log("OMMS Memory Management System CLI\n");
+      ctx.log("Usage: openclaw omms <command> [--options]\n");
+      ctx.log("Commands:");
+      ctx.log("  help          Show this help message");
+      ctx.log("  list          List stored memories");
+      ctx.log("  search        Search for memories using natural language");
+      ctx.log("  stats         Display memory statistics");
+      ctx.log("  consolidate   Run memory consolidation (archiving, deletion, promotion)\n");
+      ctx.log("Options:");
+      ctx.log("  --scope       Scope of memories (session|agent|global|all) [default: all]");
+      ctx.log("  --limit       Number of results to return [default: 20]");
+      ctx.log("  --query, -q   Search query text");
+      ctx.log("  --include_profile  Include user profile in search results\n");
+      ctx.log("Examples:");
+      ctx.log("  openclaw omms list --scope global --limit 10");
+      ctx.log("  openclaw omms search --query \"LLM extraction\" --limit 5");
+      ctx.log("  openclaw omms stats");
+      ctx.log("  openclaw omms consolidate");
+      break;
     case "list":
       await handleList(config, ctx);
       break;
@@ -33,7 +54,7 @@ export async function handleOmmsCommand(args: string[], ctx: CLIContext): Promis
       break;
     default:
       ctx.log(`Unknown command: ${command}`);
-      ctx.log("Available commands: list, search, stats, consolidate");
+      ctx.log("Type 'openclaw omms help' for available commands");
   }
 }
 

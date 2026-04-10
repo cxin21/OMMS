@@ -5,7 +5,7 @@ import { initEmbeddingService } from "./services/embedding.js";
 import { configureLLMExtractor } from "./services/llm.js";
 import { initLogger, getLogger } from "./services/logger.js";
 import { webServer } from "./web-server.js";
-import { graphEngine } from "./services/graph.js";
+import { getGraphEngine } from "./services/graph.js";
 import { createApiHandlers } from "./api.js";
 import { getDreamingService } from "./services/dreaming.js";
 import { ommsDreamingTool } from "./tools/dreaming.js";
@@ -71,7 +71,7 @@ export default definePluginEntry({
     });
 
     if (config.enableGraphEngine) {
-      graphEngine.initialize().then(() => {
+      getGraphEngine().initialize().then(() => {
         logger.info("Knowledge graph engine initialized with persistence");
       }).catch((error) => {
         logger.error("Failed to initialize knowledge graph engine", error as Error);
@@ -82,14 +82,14 @@ export default definePluginEntry({
     }
 
     const webUiPort = config.webUiPort || 3456;
-    webServer.start(webUiPort).catch((error) => {
-      logger.warn("Web UI server failed to start", { error: String(error) });
+    webServer.start(webUiPort).catch((error: Error) => {
+      logger.error("[WEB] Failed to start server", error);
     });
 
     api.registerTool(
       {
-        name: "omms_recall",
-        label: "Recall Memory",
+        name: "memory_recall",
+        label: "Memory Recall",
         description: "Search and retrieve memories using semantic vector search. Use natural language queries.",
         parameters: Type.Object({
           query: Type.String({ description: "Natural language search query" }),
@@ -97,7 +97,7 @@ export default definePluginEntry({
         }),
         async execute(_id: string, params: { query: string; limit?: number }) {
           const recallLogger = getLogger();
-          recallLogger.debug("omms_recall called", { query: params.query, limit: params.limit });
+          recallLogger.debug("memory_recall called", { query: params.query, limit: params.limit });
 
           const result = await memoryService.recall(params.query, { limit: params.limit });
           const lines: string[] = [];
@@ -115,7 +115,7 @@ export default definePluginEntry({
             lines.push("No memories found.");
           }
 
-          recallLogger.debug("omms_recall complete", { memoriesFound: result.memories.length });
+          recallLogger.debug("memory_recall complete", { memoriesFound: result.memories.length });
 
           return { content: [{ type: "text" as const, text: lines.join("\n") }], details: {} };
         },
@@ -125,8 +125,8 @@ export default definePluginEntry({
 
     api.registerTool(
       {
-        name: "omms_write",
-        label: "Write Memory",
+        name: "memory_store",
+        label: "Memory Store",
         description: "Explicitly save important information to memory with vector embedding",
         parameters: Type.Object({
           content: Type.String({ description: "Content to remember" }),
@@ -135,7 +135,7 @@ export default definePluginEntry({
         }),
         async execute(_id: string, params: { content: string; type?: string; importance?: number }) {
           const writeLogger = getLogger();
-          writeLogger.debug("omms_write called", { type: params.type, importance: params.importance });
+          writeLogger.debug("memory_store called", { type: params.type, importance: params.importance });
 
           const memory = await memoryService.store({
             content: params.content,
@@ -143,12 +143,38 @@ export default definePluginEntry({
             importance: params.importance ?? 0.5,
           });
 
-          writeLogger.info("Memory written", { id: memory.id, scope: memory.scope });
+          writeLogger.info("Memory stored", { id: memory.id, scope: memory.scope });
 
           return {
             content: [{ type: "text" as const, text: `Saved: ${memory.id}` }],
             details: { memoryId: memory.id },
           };
+        },
+      },
+      { optional: true }
+    );
+
+    api.registerTool(
+      {
+        name: "memory_forget",
+        label: "Memory Forget",
+        description: "Forget or delete a specific memory by ID",
+        parameters: Type.Object({
+          id: Type.String({ description: "Memory ID to forget" }),
+        }),
+        async execute(_id: string, params: { id: string }) {
+          const forgetLogger = getLogger();
+          forgetLogger.debug("memory_forget called", { id: params.id });
+
+          const success = await memoryService.delete(params.id);
+          
+          if (success) {
+            forgetLogger.info("Memory forgotten", { id: params.id });
+            return { content: [{ type: "text" as const, text: `Memory ${params.id} forgotten successfully` }], details: {} };
+          } else {
+            forgetLogger.warn("Memory not found", { id: params.id });
+            return { content: [{ type: "text" as const, text: `Memory ${params.id} not found` }], details: {} };
+          }
         },
       },
       { optional: true }
@@ -270,7 +296,7 @@ export default definePluginEntry({
 
         const result = await memoryService.recall(lastUserMessage, {
           agentId: event.agentId,
-          limit: 5,
+          isAutoRecall: true,
         });
 
         hookLogger.info("[RECALL] Recall result", {
@@ -336,7 +362,7 @@ export default definePluginEntry({
             }
           });
           try {
-            const graphResult = await graphEngine.search(lastUserMessage);
+            const graphResult = await getGraphEngine().search(lastUserMessage);
             
             if (graphResult.nodes.length > 0) {
               const graphContext = `[Knowledge Graph Context]\nEntities: ${graphResult.nodes.map(n => n.name).join(', ')}\n\nRelations:\n${graphResult.paths.flat().map(edge => `${edge.source} --[${edge.type}]--> ${edge.target}`).join('\n')}`;
@@ -437,7 +463,7 @@ export default definePluginEntry({
           }
         });
 
-        for (const msg of userMessages.slice.slice(-3)) {
+        for (const msg of userMessages.slice(-3)) {
           hookLogger.debug("[CAPTURE] User message sample", {
             method: "session:compact:after",
             params: {
@@ -529,7 +555,7 @@ export default definePluginEntry({
             const recentMemories = memories.slice(0, 5);
             
             for (const memory of recentMemories) {
-              await graphEngine.process(memory.content);
+              await getGraphEngine().process(memory);
             }
 
             hookLogger.info("[GRAPH] Knowledge graph updated", {
@@ -607,7 +633,7 @@ export default definePluginEntry({
       logger.info("Dreaming mechanism disabled", { config: config.dreaming?.enabled });
     }
 
-    logger.info("OMMS v2.9.0 plugin enabled");
+    logger.info("OMMS v3.5.0 plugin enabled");
     if (config.enableVectorSearch && config.embedding) {
       logger.info("Vector search enabled", { model: config.embedding.model });
     } else {

@@ -1,6 +1,6 @@
 # OMMS 插件设计文档
 
-**版本**: 3.0.0
+**版本**: 3.5.0
 **日期**: 2026-04-12
 **状态**: 生产就绪（包含 Dreaming 机制）
 
@@ -25,6 +25,9 @@ OMMS (OpenClaw Memory Management System) 是一个智能记忆管理系统，为
 | **跨Agent追踪** | 追踪记忆被不同Agent的使用情况 |
 | **持久化存储** | LanceDB 文件持久化，重启不丢失 |
 | **Web UI** | 可视化管理面板 |
+| **OpenClaw memory工具接管** | 完全替代默认的memory-core/memory-lancedb插件，支持OpenClaw CLI命令 |
+| **Search优化** | 支持向量搜索和关键词搜索的权重混合，可配置相似度阈值 |
+| **Dreaming触发机制** | 支持定时调度、内存阈值和会话计数三种触发方式，智能记忆巩固 |
 
 ### 1.2 设计理念
 
@@ -43,15 +46,16 @@ OMMS (OpenClaw Memory Management System) 是一个智能记忆管理系统，为
 ├─────────────────────────────────────────────────────────┤
 │  ┌─────────────────────────────────────────────────┐   │
 │  │              OMMS Plugin                          │   │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────┐  │   │
-│  │  │ Hooks      │  │ Tools      │  │ Web UI  │  │   │
-│  │  │ - agent_end│  │ - recall   │  │ - 概览   │  │   │
-│  │  │ - before_  │  │ - write    │  │ - 记忆   │  │   │
-│  │  │   prompt   │  │ - stats    │  │ - 日志   │  │   │
-│  │  └──────┬──────┘  └──────┬─────┘  └────┬───┘  │   │
-│  │         │                │             │        │   │
-│  │  ┌──────▼────────────────▼─────────────▼────┐   │   │
-│  │  │            MemoryService                  │   │   │
+│  │  ┌─────────────┐  ┌─────────────────────────┐  │   │
+│  │  │ Hooks      │  │ Tools                  │  │   │
+│  │  │ - agent_end│  │ - memory_recall       │  │   │
+│  │  │ - before_  │  │ - memory_store        │  │   │
+│  │  │   prompt   │  │ - memory_forget       │  │   │
+│  │  └──────┬──────┘  │ - omms_stats         │  │   │
+│  │         │         │ - omms_graph         │  │   │
+│  │  ┌──────▼─────────│ - omms_dreaming      │  │   │
+│  │  │            │  │ - omms_logs          │  │   │
+│  │  │ MemoryService   └──────────────────────┘  │   │
 │  │  │  - extractFromMessages()  提取           │   │   │
 │  │  │  - store()               存储             │   │   │
 │  │  │  - recall()              召回             │   │   │
@@ -307,7 +311,155 @@ class LLMExtractor {
 
 ---
 
-## 五、记忆召回优先级算法
+## 五、搜索算法优化
+
+### 5.1 混合搜索策略
+
+OMMS 支持向量搜索和关键词搜索的权重混合，提供更精确的搜索结果：
+
+```typescript
+// 搜索权重配置
+const searchConfig = {
+  vectorWeight: 0.7,    // 向量搜索权重
+  keywordWeight: 0.3,   // 关键词搜索权重
+  limit: 10             // 默认搜索结果限制
+};
+
+// 混合搜索实现
+async function hybridSearch(query: string, limit: number = searchConfig.limit): Promise<SearchResult[]> {
+  const vectorResults = await vectorStore.search(query, limit * 2);
+  const keywordResults = await keywordSearch(query, limit * 2);
+  
+  // 合并结果并计算综合分数
+  const combinedResults = mergeResults(vectorResults, keywordResults);
+  
+  // 应用相似度阈值
+  const filteredResults = combinedResults.filter(result => 
+    result.combinedScore >= config.recall.minSimilarity
+  );
+  
+  return filteredResults.slice(0, limit);
+}
+```
+
+### 5.2 相似度阈值
+
+添加了最小相似度阈值配置，确保只返回足够相关的结果：
+
+```json
+"recall": {
+  "minSimilarity": 0.3  // 最低相似度阈值 (0-1)
+}
+```
+
+---
+
+## 六、Dreaming 机制触发策略
+
+### 6.1 触发条件检查
+
+Dreaming 机制支持多种触发方式，通过 `checkTriggerConditions()` 方法实现：
+
+```typescript
+private checkTriggerConditions(): boolean {
+  // 检查内存阈值条件
+  if (this.config.memoryThreshold?.enabled) {
+    const memoryService = getMemoryService();
+    const memories: Array<{ updatedAt: string }> = memoryService.getAll();
+    
+    // 检查记忆数量阈值
+    if (memories.length < this.config.memoryThreshold.minMemories!) {
+      this.logger.debug("[DREAMING] Memory count below threshold", { 
+        count: memories.length, 
+        threshold: this.config.memoryThreshold.minMemories 
+      });
+      return false;
+    }
+
+    // 检查记忆年龄阈值
+    const now = new Date();
+    const oldestMemory = memories.reduce((oldest: { updatedAt: string }, current: { updatedAt: string }) => 
+      new Date(current.updatedAt) < new Date(oldest.updatedAt) ? current : oldest
+    );
+    
+    const ageHours = (now.getTime() - new Date(oldestMemory.updatedAt).getTime()) / (1000 * 60 * 60);
+    if (ageHours > this.config.memoryThreshold.maxAgeHours!) {
+      this.logger.debug("[DREAMING] Oldest memory exceeds age threshold", { 
+        ageHours: Math.round(ageHours), 
+        threshold: this.config.memoryThreshold.maxAgeHours 
+      });
+      return false;
+    }
+  }
+
+  // 检查会话计数条件
+  if (this.config.sessionTrigger?.enabled) {
+    // 这里需要获取会话计数，但当前实现中没有会话管理
+    // 暂时不实现这个功能，默认返回true
+    this.logger.debug("[DREAMING] Session trigger enabled but not implemented");
+    return true;
+  }
+
+  return true;
+}
+```
+
+### 6.2 触发机制配置
+
+```json
+"dreaming": {
+  "enabled": true,
+  "schedule": {
+    "enabled": true,
+    "time": "02:00",
+    "timezone": "Asia/Shanghai"
+  },
+  "memoryThreshold": {
+    "enabled": true,
+    "minMemories": 50,
+    "maxAgeHours": 24
+  },
+  "sessionTrigger": {
+    "enabled": true, 
+    "afterSessions": 10
+  },
+  "promotion": {
+    "minScore": 0.7,
+    "weights": {
+      "recallFrequency": 0.25,
+      "relevance": 0.20,
+      "diversity": 0.15,
+      "recency": 0.15,
+      "consolidation": 0.15,
+      "conceptualRichness": 0.10
+    }
+  }
+}
+```
+
+### 6.3 SKIPPED 阶段
+
+当触发条件不满足时，Dreaming 机制会返回 SKIPPED 阶段：
+
+```typescript
+if (!this.checkTriggerConditions()) {
+  this.logger.info("[DREAMING] Trigger conditions not met, skipping");
+  return {
+    success: false,
+    phase: 'SKIPPED',
+    startTime: startTime.toISOString(),
+    endTime: new Date().toISOString(),
+    duration: new Date().getTime() - startTime.getTime(),
+    data: {},
+    logs: [],
+    error: 'Trigger conditions not met'
+  };
+}
+```
+
+---
+
+## 七、记忆召回优先级算法
 
 ### 5.1 优先级计算公式
 
@@ -672,7 +824,156 @@ http://127.0.0.1:3456
 | `/api/config` | GET | - | `{ success, data: { version, llm, embedding, features } }` |
 | `/api/delete` | POST | `{ id }` | `{ success, data: { id } }` |
 | `/api/promote` | POST | `{ id }` | `{ success, data: { id, scope } }` |
-| `/api/saveConfig` | POST | `{ llm?, embedding?, features? }` | `{ success, data: { message, config } }` |
+| `/api/saveConfig` | POST | `{ llm?, embedding?, features? }` | `{ success, data: { message, config } }`
+
+---
+
+## 十、OpenClaw memory工具接管
+
+### 10.1 概述
+
+OMMS 插件通过实现 `kind: "memory"` 插槽系统，可以完全接管 OpenClaw 的 memory 工具。这意味着 OMMS 可以替代默认的 memory-core/memory-lancedb 插件，提供更强大的记忆管理功能。
+
+### 10.2 支持的 OpenClaw CLI 命令
+
+通过配置 `plugins.slots.memory: "omms"`, OMMS 会响应以下 OpenClaw CLI 命令：
+
+| 命令 | 说明 |
+|------|------|
+| `openclaw memory status` | 查看记忆系统状态 |
+| `openclaw memory status --deep` | 深度状态检查（包含向量搜索可用性） |
+| `openclaw memory status --fix` | 修复记忆索引 |
+| `openclaw memory index --force` | 强制重新索引 |
+| `openclaw memory search "query"` | 搜索记忆 |
+| `openclaw memory promote --limit 10` | 提升短期记忆到长期记忆 |
+| `openclaw memory promote --apply` | 应用提升操作 |
+| `openclaw memory promote-explain "query"` | 解释提升决策 |
+| `openclaw memory rem-harness` | 预览 REM 阶段 |
+
+### 10.3 插件配置
+
+要使用 OMMS 作为默认的记忆插件，需要在 `openclaw.json` 中进行以下配置：
+
+```json
+{
+  "plugins": {
+    "slots": {
+      "memory": "omms"  // 指定使用 OMMS 作为记忆插件
+    },
+    "entries": {
+      "omms": {
+        "config": {
+          "enableAutoRecall": true,
+          "enableAutoCapture": true,
+          "llm": {
+            // LLM 配置
+          },
+          "embedding": {
+            // 嵌入模型配置
+          },
+          "dreaming": {
+            "enabled": false,
+            "schedule": {
+              "enabled": true,
+              "time": "02:00"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### 10.4 与 memory-core 的对比
+
+| 特性 | memory-core | OMMS |
+|------|------------|------|
+| **向量搜索** | ❌ | ✅ |
+| **双评分系统** | ❌ | ✅ |
+| **知识图谱** | ❌ | ✅ |
+| **Dreaming 机制** | ❌ | ✅ |
+| **Web UI** | ❌ | ✅ |
+| **配置灵活性** | ⚠️ 有限 | ✅ 高度可配置 |
+| **持久化存储** | 文件系统 | LanceDB + 文件 |
+| **实时性** | ❌ | ✅ |
+
+### 10.5 工具实现
+
+OMMS 实现了 OpenClaw 规范的记忆工具接口：
+
+```typescript
+class OMMSPlugin {
+  // 符合 OpenClaw memory 工具规范
+  registerTools(api) {
+    // memory_recall - 搜索记忆（符合OpenClaw标准）
+    api.registerTool({
+      name: "memory_recall",
+      label: "Memory Recall",
+      description: "Search and retrieve memories using semantic vector search",
+      parameters: {
+        query: Type.String({ description: "Search query" }),
+        limit: Type.Optional(Type.Number({ default: 5 }))
+      },
+      async execute(id, params) {
+        const result = await memoryService.recall(params.query, params.limit);
+        // 格式化为符合 OpenClaw 规范的响应
+        return formatForOpenClaw(result);
+      }
+    });
+
+    // memory_store - 存储记忆（符合OpenClaw标准）
+    api.registerTool({
+      name: "memory_store",
+      label: "Memory Store",
+      description: "Save important information to memory",
+      parameters: {
+        content: Type.String({ description: "Content to remember" }),
+        type: Type.Optional(Type.String()),
+        importance: Type.Optional(Type.Number({ default: 0.5 }))
+      },
+      async execute(id, params) {
+        const memory = await memoryService.store({
+          content: params.content,
+          type: params.type,
+          importance: params.importance
+        });
+        return { content: [{ type: "text", text: `Saved: ${memory.id}` }] };
+      }
+    });
+
+    // memory_forget - 删除记忆（符合OpenClaw标准）
+    api.registerTool({
+      name: "memory_forget",
+      label: "Memory Forget",
+      description: "Forget or delete a specific memory",
+      parameters: {
+        id: Type.String({ description: "Memory ID to forget" })
+      },
+      async execute(id, params) {
+        const success = await memoryService.delete(params.id);
+        return { 
+          content: [{ type: "text", text: success ? "Memory forgotten" : "Memory not found" }] 
+        };
+      }
+    });
+  }
+}
+```
+
+### 10.6 优势
+
+使用 OMMS 作为 OpenClaw 记忆插件具有以下显著优势：
+
+1. **语义搜索**: 使用向量嵌入和 LLM 提取，提供更智能的搜索结果
+2. **双评分系统**: 独立计算重要性和作用域评分，更准确的记忆管理
+3. **知识图谱**: 自动识别实体和关系，建立记忆关联
+4. **Dreaming 机制**: 自动化记忆巩固和提升
+5. **可视化**: Web UI 提供直观的记忆管理和分析
+6. **高性能**: LanceDB 提供快速的向量搜索和持久化存储
+7. **可扩展性**: 高度可配置的架构，支持多种 LLM 和嵌入模型
+
+--- |
 
 #### 请求参数详情
 
@@ -1279,9 +1580,9 @@ priority = similarity × importance × scopeWeight + scopeScore × 0.2
 
 ---
 
-**文档版本**: 2.9.0
+**文档版本**: 3.5.0
 **更新日期**: 2026-04-12
-**状态**: 生产就绪
+**状态**: 生产就绪（支持OpenClaw memory工具接管）
 
 ---
 

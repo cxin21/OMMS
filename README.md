@@ -1,6 +1,6 @@
 # OMMS - OpenClaw Memory Management System
 
-**版本**: 3.0.0
+**版本**: 3.5.0
 **日期**: 2026-04-12
 
 ---
@@ -89,7 +89,66 @@ openclaw gateway start
 
 ### 完整配置
 
-详细配置说明请查看 [OMMS-Install.md](OMMS-Install.md)
+#### 基础配置
+| **配置项** | **类型** | **说明** |
+|-----------|----------|----------|
+| `enableAutoRecall` | 布尔值 | 是否在对话开始时自动召回相关记忆 |
+| `enableAutoCapture` | 布尔值 | 是否在对话结束时自动捕获记忆 |
+| `enableLLMExtraction` | 布尔值 | 是否使用LLM进行内容提取 |
+| `enableGraphEngine` | 布尔值 | 是否启用知识图谱引擎 |
+| `enableProfile` | 布尔值 | 是否生成用户画像 |
+| `enableSessionSummary` | 布尔值 | 是否启用会话摘要功能（预留字段） |
+| `enableVectorSearch` | 布尔值 | 是否启用向量搜索 |
+| `maxMemoriesPerSession` | 数字 | 每个会话的最大记忆数量 |
+| `autoArchiveThreshold` | 数字 | 自动归档的重要性评分阈值 |
+| `maxExtractionResults` | 数字 | 每次对话的最大记忆提取数量 |
+| `webUiPort` | 数字 | Web UI访问端口 |
+
+#### 搜索配置
+| **配置项** | **类型** | **说明** |
+|-----------|----------|----------|
+| `search.vectorWeight` | 数字 | 向量搜索权重（0-1） |
+| `search.keywordWeight` | 数字 | 关键词搜索权重（0-1） |
+| `search.limit` | 数字 | 默认搜索结果限制 |
+
+#### 召回配置
+| **配置项** | **类型** | **说明** |
+|-----------|----------|----------|
+| `recall.autoRecallLimit` | 数字 | 自动召回时返回的记忆数量 |
+| `recall.manualRecallLimit` | 数字 | 手动召回时返回的记忆数量 |
+| `recall.minSimilarity` | 数字 | 最小相似度阈值（0-1） |
+| `recall.boostOnRecall` | 布尔值 | 召回时是否提升重要性 |
+| `recall.boostScopeScoreOnRecall` | 布尔值 | 召回时是否提升作用域评分 |
+
+#### Dreaming机制配置
+| **配置项** | **类型** | **说明** |
+|-----------|----------|----------|
+| `dreaming.enabled` | 布尔值 | 是否启用Dreaming机制 |
+| `dreaming.schedule.time` | 字符串 | 定时触发时间（HH:MM格式） |
+| `dreaming.schedule.timezone` | 字符串 | 时区设置 |
+| `dreaming.memoryThreshold.enabled` | 布尔值 | 是否启用内存阈值触发 |
+| `dreaming.memoryThreshold.minMemories` | 数字 | 触发Dreaming的最小记忆数量 |
+| `dreaming.memoryThreshold.maxAgeHours` | 数字 | 记忆的最大年龄（小时） |
+| `dreaming.sessionTrigger.enabled` | 布尔值 | 是否启用会话计数触发 |
+| `dreaming.sessionTrigger.afterSessions` | 数字 | 触发Dreaming的会话数量 |
+| `dreaming.promotion.minScore` | 数字 | 记忆提升的最低分数阈值 |
+| `dreaming.promotion.weights.recallFrequency` | 数字 | 召回频率权重 |
+| `dreaming.promotion.weights.relevance` | 数字 | 相关性权重 |
+| `dreaming.promotion.weights.diversity` | 数字 | 多样性权重 |
+| `dreaming.promotion.weights.recency` | 数字 | 时效性权重 |
+| `dreaming.promotion.weights.consolidation` | 数字 | 整合性权重 |
+| `dreaming.promotion.weights.conceptualRichness` | 数字 | 概念丰富度权重 |
+
+#### 其他配置
+| **配置项** | **类型** | **说明** |
+|-----------|----------|----------|
+| `boostPolicy` | 对象 | 强化策略配置 |
+| `forgetPolicy` | 对象 | 遗忘策略配置 |
+| `scopeUpgrade` | 对象 | 作用域升级策略配置 |
+| `embedding` | 对象 | 嵌入模型配置 |
+| `llm` | 对象 | LLM配置 |
+| `vectorStore` | 对象 | 向量存储配置 |
+| `logging` | 对象 | 日志配置 |
 
 ---
 
@@ -101,12 +160,13 @@ openclaw gateway start
 
 | 工具 | 说明 |
 |------|------|
-| `omms_recall` | 搜索记忆 |
-| `omms_write` | 显式保存记忆 |
+| `memory_recall` | 搜索记忆（符合OpenClaw标准） |
+| `memory_store` | 显式保存记忆（符合OpenClaw标准） |
+| `memory_forget` | 删除记忆（符合OpenClaw标准） |
+| `omms_dreaming` | Dreaming 机制控制（OMMS特色功能） |
 | `omms_stats` | 查看统计 |
 | `omms_logs` | 查看日志 |
 | `omms_graph` | 知识图谱查询 |
-| `omms_dreaming` | Dreaming 机制控制 |
 
 ### Dreaming 工具使用
 

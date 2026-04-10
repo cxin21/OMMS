@@ -177,16 +177,24 @@ export class Logger {
     }
 
     if ((this.logOutput === "file" || this.logOutput === "both") && this.filePath) {
-      try {
-        const fs = require("fs") as typeof import("fs");
-        const path = require("path") as typeof import("path");
-        const dir = path.dirname(this.filePath);
-        if (!fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true });
-        }
-        fs.appendFileSync(this.filePath, msg + "\n");
-      } catch {
-      }
+      this.writeToFile(msg).catch(error => {
+        console.error("Failed to write log to file:", error);
+      });
+    }
+  }
+
+  private async writeToFile(message: string): Promise<void> {
+    if (!this.filePath) return;
+    
+    try {
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      const dir = path.dirname(this.filePath);
+      
+      await fs.mkdir(dir).catch(() => {});
+      await fs.appendFile(this.filePath, message + "\n");
+    } catch (error) {
+      throw error;
     }
   }
 

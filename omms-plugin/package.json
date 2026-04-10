@@ -1,6 +1,6 @@
 {
   "name": "@omms/openclaw-omms",
-  "version": "3.0.0",
+  "version": "3.5.0",
   "description": "Intelligent memory management with LLM extraction, user profiles, and knowledge graphs for OpenClaw",
   "type": "module",
   "main": "dist/index.js",
