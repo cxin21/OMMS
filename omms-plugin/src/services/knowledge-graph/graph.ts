@@ -1,5 +1,6 @@
-import type { GraphNode, GraphEdge, RelationshipType, Memory } from "../../types/src/index.js";
-import { getLogger } from "../logging/src/logger.js";
+import type { GraphNode, GraphEdge, RelationshipType, Memory } from "../../types/index.js";
+import { getLogger } from "../logging/logger.js";
+import { configManager } from "../../config.js";
 
 export class GraphEngine {
   private nodes = new Map<string, GraphNode>();
@@ -14,7 +15,9 @@ export class GraphEngine {
   async initialize(): Promise<void> {
     this.logger.info("[GRAPH] GraphEngine initialization started");
     
-    const configDir = `${process.env.HOME || process.env.USERPROFILE}/.openclaw`;
+    // 使用统一配置管理模块
+    const configPath = configManager.getConfigPath();
+    const configDir = configManager.getConfigDir();
     this.persistencePath = `${configDir}/omms-graph.json`;
     
     try {
@@ -268,7 +271,11 @@ export class GraphEngine {
 
   // 搜索相关实体和路径
   async search(query: string): Promise<{ nodes: GraphNode[]; paths: GraphEdge[][] }> {
-    this.logger.debug("Graph search query", { query });
+    this.logger.debug("[GRAPH] Graph search query", {
+      method: "search",
+      params: { query },
+      returns: "{ nodes: GraphNode[]; paths: GraphEdge[][] }"
+    });
 
     const results: { nodes: GraphNode[]; paths: GraphEdge[][] } = {
       nodes: [],
@@ -293,10 +300,14 @@ export class GraphEngine {
       });
     });
 
-    this.logger.info("Graph search completed", {
-      query,
-      nodesFound: results.nodes.length,
-      pathsFound: results.paths.length
+    this.logger.info("[GRAPH] Graph search completed", {
+      method: "search",
+      params: { query },
+      returns: "{ nodes: GraphNode[]; paths: GraphEdge[][] }",
+      data: {
+        nodesFound: results.nodes.length,
+        pathsFound: results.paths.length
+      }
     });
 
     return results;

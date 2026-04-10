@@ -1,6 +1,6 @@
 import { Type } from "@sinclair/typebox";
-import { getDreamingService } from "../services/dreaming.js";
-import { getLogger } from "../services/logger.js";
+import { getDreamingService } from "../services/dreaming/dreaming.js";
+import { getLogger } from "../services/logging/logger.js";
 import type { DreamingStatus, DreamingResult } from "../types/dreaming.js";
 
 const logger = getLogger();

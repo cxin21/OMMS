@@ -1,4 +1,4 @@
-import { memoryService } from "../services/memory.js";
+import { memoryService } from "../services/core-memory/memory.js";
 
 export const ommsStatsTool = {
   name: "omms_stats",

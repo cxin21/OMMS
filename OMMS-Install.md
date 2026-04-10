@@ -27,7 +27,11 @@ npm install
 # 3. 编译
 npm run build
 
-# 4. 复制 Web UI
+# 4. 构建 Web UI
+cd ../omms-ui
+npm install
+npm run build
+cd ../omms-plugin
 mkdir -p dist/ui
 cp -r ../omms-ui/dist/* dist/ui/
 
@@ -62,6 +66,29 @@ openclaw gateway start
     }
   }
 }
+```
+
+### 2.2 环境变量配置
+
+```bash
+# Web UI 端口
+export OMMS_WEB_UI_PORT=3456
+
+# LLM 配置
+export OMMS_LLM_MODEL="abab6.5s-chat"
+export OMMS_LLM_BASE_URL="https://api.minimax.chat/v1"
+export OMMS_LLM_API_KEY="your-api-key"
+
+# Embedding 配置
+export OMMS_EMBEDDING_MODEL="text-embedding-3-small"
+export OMMS_EMBEDDING_DIMENSIONS=1536
+export OMMS_EMBEDDING_BASE_URL="https://api.siliconflow.cn/v1"
+export OMMS_EMBEDDING_API_KEY="your-api-key"
+
+# 路径配置
+export OMMS_CONFIG_DIR="$HOME/.openclaw"
+export OMMS_DATA_DIR="omms-data"
+export OMMS_LOGS_DIR="omms-logs"
 ```
 
 ### 2.2 完整配置示例
@@ -244,11 +271,11 @@ openclaw gateway start
 | `enableLLMExtraction` | boolean | true | LLM 智能提取 |
 | `enableVectorSearch` | boolean | true | 向量搜索 |
 | `enableProfile` | boolean | true | 用户 Profile |
-| `enableSessionSummary` | boolean | true | 会话摘要功能（预留字段） |
-| `enableGraphEngine` | boolean | false | 知识图谱引擎 |
+| `enableSessionSummary` | boolean | false | 会话摘要功能（预留字段） |
+| `enableGraphEngine` | boolean | true | 知识图谱引擎 |
 | `maxMemoriesPerSession` | number | 50 | 每会话最大记忆数 |
-| `autoArchiveThreshold` | number | 0.2 | 自动归档的重要性评分阈值 |
-| `maxExtractionResults` | number | 50 | 每次提取最大记忆数 |
+| `autoArchiveThreshold` | number | 0.3 | 自动归档的重要性评分阈值 |
+| `maxExtractionResults` | number | 10 | 每次提取最大记忆数 |
 | `webUiPort` | number | 3456 | Web UI 端口 |
 
 ### 3.2 搜索配置
@@ -258,6 +285,15 @@ openclaw gateway start
 | `search.vectorWeight` | number | 0.7 | 向量搜索权重（0-1） |
 | `search.keywordWeight` | number | 0.3 | 关键词搜索权重（0-1） |
 | `search.limit` | number | 10 | 默认搜索结果限制 |
+
+### 3.3 向量存储配置
+
+```typescript
+vectorStore: {
+  type: "lancedb" | "memory";        // "lancedb"
+  vectorDimensionMismatch: "warn" | "rebuild" | "use-existing";  // "warn"
+}
+```
 
 ### 3.3 召回配置
 

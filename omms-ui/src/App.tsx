@@ -974,9 +974,50 @@ function LogsPage({ logs }: { logs: LogEntry[] }) {
   );
 }
 
+import ReactFlow, {
+  Background,
+  Controls,
+  MiniMap,
+  ReactFlowProvider,
+  useNodesState,
+  useEdgesState,
+  Handle,
+  Position,
+} from 'reactflow';
+import 'reactflow/dist/style.css';
+
+// 自定义节点组件
+const CustomNode = ({ data }: any) => {
+  const isEntity = data.type === 'entity';
+  const isConcept = data.type === 'concept';
+
+  return (
+    <div className={`px-4 py-2 rounded-lg shadow-lg ${
+      isEntity ? 'bg-blue-500 text-white' :
+      isConcept ? 'bg-green-500 text-white' : 'bg-gray-500 text-white'
+    }`}>
+      <Handle type="target" position={Position.Top} />
+      <div className="font-semibold text-sm">{data.label}</div>
+      <div className="text-xs opacity-80">
+        {data.type === 'entity' ? '实体' : '概念'}
+      </div>
+      {data.mentionCount && (
+        <div className="text-xs opacity-80 mt-1">
+          提及: {data.mentionCount}
+        </div>
+      )}
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  );
+};
+
+const nodeTypes = {
+  custom: CustomNode,
+};
+
 function GraphPage() {
-  const [nodes, setNodes] = useState<any[]>([]);
-  const [edges, setEdges] = useState<any[]>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedNode, setSelectedNode] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -1002,8 +1043,32 @@ function GraphPage() {
           statsRes.json()
         ]);
 
-        if (nodesData.success) setNodes(nodesData.data);
-        if (edgesData.success) setEdges(edgesData.data);
+        if (nodesData.success) {
+          const flowNodes = nodesData.data.map((node: any, index: number) => ({
+            id: node.id,
+            type: 'custom',
+            position: { x: 100 + index * 150, y: 100 + (index % 2) * 200 },
+            data: { 
+              label: node.name,
+              type: node.type,
+              mentionCount: node.mentionCount
+            },
+          }));
+          setNodes(flowNodes);
+        }
+        
+        if (edgesData.success) {
+          const flowEdges = edgesData.data.map((edge: any) => ({
+            id: edge.id,
+            source: edge.source,
+            target: edge.target,
+            label: edge.type,
+            animated: true,
+            style: { stroke: '#64748b', strokeWidth: 2 },
+          }));
+          setEdges(flowEdges);
+        }
+        
         if (statsData.success) setStats(statsData.data);
       }
     } catch (error) {
@@ -1024,15 +1089,35 @@ function GraphPage() {
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
-          setNodes(data.data.nodes);
+          const searchNodes = data.data.nodes.map((node: any, index: number) => ({
+            id: node.id,
+            type: 'custom',
+            position: { x: 100 + index * 150, y: 100 + (index % 2) * 200 },
+            data: { 
+              label: node.name,
+              type: node.type,
+              mentionCount: node.mentionCount
+            },
+          }));
+          setNodes(searchNodes);
+          
           const allEdges = await fetch(`${API_BASE}/graph/edges`);
           if (allEdges.ok) {
             const edgesData = await allEdges.json();
             if (edgesData.success) {
               const nodeIds = new Set(data.data.nodes.map((node: any) => node.id));
-              setEdges(edgesData.data.filter((edge: any) => 
+              const filteredEdges = edgesData.data.filter((edge: any) => 
                 nodeIds.has(edge.source) || nodeIds.has(edge.target)
-              ));
+              );
+              const flowEdges = filteredEdges.map((edge: any) => ({
+                id: edge.id,
+                source: edge.source,
+                target: edge.target,
+                label: edge.type,
+                animated: true,
+                style: { stroke: '#64748b', strokeWidth: 2 },
+              }));
+              setEdges(flowEdges);
             }
           }
         }
@@ -1041,8 +1126,6 @@ function GraphPage() {
       console.error('Failed to search graph:', error);
     }
   };
-
-
 
   const handleClearGraph = async () => {
     if (confirm('确定要清除整个知识图谱吗？')) {
@@ -1059,6 +1142,19 @@ function GraphPage() {
       } catch (error) {
         console.error('Failed to clear graph:', error);
       }
+    }
+  };
+
+  const onNodeClick = (_: React.MouseEvent, node: any) => {
+    const originalNode = nodes.find(n => n.id === node.id);
+    if (originalNode) {
+      setSelectedNode({
+        id: node.id,
+        name: originalNode.data.label,
+        type: originalNode.data.type,
+        mentionCount: originalNode.data.mentionCount,
+        createdAt: new Date().toISOString() // 占位值，实际应该从API获取
+      });
     }
   };
 
@@ -1153,7 +1249,7 @@ function GraphPage() {
 
       {/* 图可视化区域 */}
       <div className="bg-white rounded-lg p-6 shadow">
-        <div className="h-96 bg-gray-50 rounded-lg border border-gray-200 relative">
+        <div className="h-96 bg-gray-50 rounded-lg border border-gray-200">
           {nodes.length === 0 ? (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="text-center text-gray-500">
@@ -1163,14 +1259,27 @@ function GraphPage() {
               </div>
             </div>
           ) : (
-            <div className="w-full h-full">
-              {/* 这里应该是图可视化组件，如react-flow或d3-force */}
-              <div className="flex flex-col items-center justify-center h-full">
-                <Layers className="w-12 h-12 text-gray-400 mb-4" />
-                <p className="text-gray-500">图可视化组件待实现</p>
-                <p className="text-sm text-gray-400 mt-2">节点数: {nodes.length}, 关系数: {edges.length}</p>
-              </div>
-            </div>
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onNodeClick={onNodeClick}
+              onPaneClick={() => setSelectedNode(null)}
+              nodeTypes={nodeTypes}
+              fitView
+              className="w-full h-full"
+            >
+              <Background />
+              <Controls />
+              <MiniMap
+                nodeColor={(node) => {
+                  const data = node.data as any;
+                  return data.type === 'entity' ? '#3b82f6' : 
+                         data.type === 'concept' ? '#10b981' : '#6b7280';
+                }}
+              />
+            </ReactFlow>
           )}
         </div>
       </div>

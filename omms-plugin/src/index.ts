@@ -1,17 +1,126 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { Type } from "@sinclair/typebox";
-import { memoryService } from "./services/memory.js";
-import { initEmbeddingService } from "./services/embedding.js";
-import { configureLLMExtractor } from "./services/llm.js";
-import { initLogger, getLogger } from "./services/logger.js";
-import { webServer } from "./web-server.js";
-import { getGraphEngine } from "./services/graph.js";
+import { pluginManager } from "./plugin-adapter/plugin-manager.js";
+import { BasePlugin, PluginFactory } from "./plugin-adapter/core-interface.js";
+import { getLogger } from "./services/logging/logger.js";
 import { createApiHandlers } from "./api.js";
-import { getDreamingService } from "./services/dreaming.js";
-import { ommsDreamingTool } from "./tools/dreaming.js";
+import { getDreamingService } from "./services/dreaming/dreaming.js";
+import { webServer } from "./web-server.js";
+import { memoryService } from "./services/core-memory/memory.js";
+import { initEmbeddingService } from "./services/vector-search/embedding.js";
+import { configureLLMExtractor } from "./services/llm/llm.js";
+import { initLogger } from "./services/logging/logger.js";
+import { getGraphEngine } from "./services/knowledge-graph/graph.js";
+import { configManager, DEFAULT_OMMS_CONFIG } from "./config.js";
+import type { PluginInterface } from "./plugin-adapter/plugin-interface.js";
 import type { OMMSConfig, MemoryType } from "./types/index.js";
 
 export { createApiHandlers };
+
+// 定义OMMS核心插件实现
+class OMMSCorePlugin extends BasePlugin {
+  id = "omms";
+  name = "OMMS Memory System";
+  description = "Intelligent memory management with vector search, user profiles, and knowledge graphs";
+  version = "1.0.0";
+
+  private config: OMMSConfig = {};
+
+  async initialize(config: OMMSConfig): Promise<void> {
+    // 初始化配置管理模块
+    configManager.initialize({}, config);
+    
+    // 使用默认配置填充缺失的字段
+    this.config = { ...DEFAULT_OMMS_CONFIG, ...config };
+    
+    getLogger().info("OMMS core plugin initializing", { 
+      config: { 
+        ...this.config, 
+        embedding: this.config.embedding ? { ...this.config.embedding, apiKey: "***" } : undefined 
+      } 
+    });
+    
+    if (this.config.logging) {
+      initLogger(this.config.logging);
+      getLogger().info("Logger configured", { config: this.config.logging });
+    }
+
+    if (this.config.llm && this.config.enableLLMExtraction) {
+      try {
+        configureLLMExtractor({
+          provider: "openai-compatible",
+          model: this.config.llm.model || "abab6.5s-chat",
+          baseURL: this.config.llm.baseURL || "https://api.minimax.chat",
+          apiKey: this.config.llm.apiKey,
+        });
+        getLogger().info("LLM Extractor configured", { 
+          model: this.config.llm.model, 
+          provider: this.config.llm.provider 
+        });
+      } catch (error) {
+        getLogger().error("Failed to configure LLM Extractor", error as Error);
+      }
+    } else if (this.config.enableLLMExtraction) {
+      getLogger().warn("LLM extraction enabled but llm config missing");
+    }
+
+    if (this.config.enableVectorSearch && this.config.embedding) {
+      try {
+        initEmbeddingService({
+          model: this.config.embedding.model || "text-embedding-3-small",
+          dimensions: this.config.embedding.dimensions || 1536,
+          baseURL: this.config.embedding.baseURL || "https://api.openai.com/v1",
+          apiKey: this.config.embedding.apiKey,
+        });
+        getLogger().info("Embedding service initialized", { 
+          model: this.config.embedding.model 
+        });
+      } catch (error) {
+        getLogger().error("Failed to initialize embedding service", error as Error);
+      }
+    } else if (this.config.enableVectorSearch) {
+      getLogger().warn("Vector search enabled but embedding config missing");
+    }
+
+    memoryService.updateConfig(config);
+    getLogger().info("Memory service configured", {
+      enableCapture: config.enableAutoCapture,
+      enableLLMExtraction: config.enableLLMExtraction,
+      enableVectorSearch: config.enableVectorSearch,
+      enableProfile: config.enableProfile,
+      enableGraphEngine: config.enableGraphEngine,
+    });
+
+    if (config.enableGraphEngine) {
+      getGraphEngine().initialize().then(() => {
+        getLogger().info("Knowledge graph engine initialized with persistence");
+      }).catch((error) => {
+        getLogger().error("Failed to initialize knowledge graph engine", error as Error);
+      });
+      getLogger().info("Knowledge graph engine enabled", {
+        description: "Graph engine will process memories and provide context during recall"
+      });
+    }
+
+    await super.initialize(config);
+  }
+
+  async storeMemory(content: string, type: string, importance: number, scope?: string, block?: string): Promise<string> {
+    getLogger().debug("Storing memory via plugin", { length: content.length, type, importance, scope });
+    return await super.storeMemory(content, type, importance, scope, block);
+  }
+
+  async recallMemory(query: string, options?: any): Promise<any[]> {
+    getLogger().debug("Recalling memory via plugin", { query, options });
+    const result = await super.recallMemory(query, options);
+    getLogger().debug("Recall completed", { count: result.length });
+    return result;
+  }
+
+  async getStats(): Promise<any> {
+    return await super.getStats();
+  }
+}
 
 export default definePluginEntry({
   id: "omms",
@@ -24,68 +133,55 @@ export default definePluginEntry({
     const logger = getLogger();
     logger.info("Initializing OMMS plugin", { config: { ...config, embedding: config.embedding ? { ...config.embedding, apiKey: "***" } : undefined } });
 
-    if (config.logging) {
-      initLogger(config.logging);
-      logger.info("Logger configured", { config: config.logging });
-    }
-
-    if (config.llm && config.enableLLMExtraction) {
-      try {
-        configureLLMExtractor({
-          provider: "openai-compatible",
-          model: config.llm.model || "abab6.5s-chat",
-          baseURL: config.llm.baseURL,
-          apiKey: config.llm.apiKey,
-        });
-        logger.info("LLM Extractor configured", { model: config.llm.model, provider: config.llm.provider });
-      } catch (error) {
-        logger.error("Failed to configure LLM Extractor", error as Error);
-      }
-    } else if (config.enableLLMExtraction) {
-      logger.warn("LLM extraction enabled but llm config missing");
-    }
-
-    if (config.enableVectorSearch && config.embedding) {
-      try {
-        initEmbeddingService({
-          model: config.embedding.model,
-          dimensions: config.embedding.dimensions || 1024,
-          baseURL: config.embedding.baseURL,
-          apiKey: config.embedding.apiKey,
-        });
-        logger.info("Embedding service initialized", { model: config.embedding.model });
-      } catch (error) {
-        logger.error("Failed to initialize embedding service", error as Error);
-      }
-    } else if (config.enableVectorSearch) {
-      logger.warn("Vector search enabled but embedding config missing");
-    }
-
-    memoryService.updateConfig(config);
-    logger.info("Memory service configured", {
-      enableCapture: config.enableAutoCapture,
-      enableLLMExtraction: config.enableLLMExtraction,
-      enableVectorSearch: config.enableVectorSearch,
-      enableProfile: config.enableProfile,
-      enableGraphEngine: config.enableGraphEngine,
+    // 创建并注册插件实例
+    const plugin: PluginInterface = PluginFactory.createPlugin(OMMSCorePlugin);
+    pluginManager.registerPlugin(plugin, {
+      enabled: true,
+      config,
+      events: {
+        "initialize": [
+          async (event: any, data: any) => {
+            logger.info("Plugin initialized via adapter", { data });
+          }
+        ],
+        "config_update": [
+          async (event: any, data: any) => {
+            logger.debug("Config updated", { keys: Object.keys(data) });
+          }
+        ],
+        "memory_store": [
+          async (event: any, data: any) => {
+            logger.debug("Memory stored via adapter", { id: data.id });
+          }
+        ],
+        "memory_recall": [
+          async (event: any, data: any) => {
+            logger.debug("Memory recalled", { query: data.query, count: data.results.length });
+          }
+        ],
+        "memory_forget": [
+          async (event: any, data: any) => {
+            logger.debug("Memory forgotten", { id: data.id });
+          }
+        ],
+        "search_graph": [
+          async (event: any, data: any) => {
+            logger.debug("Knowledge graph searched", { query: data.query, count: data.results.length });
+          }
+        ]
+      } as any
     });
 
-    if (config.enableGraphEngine) {
-      getGraphEngine().initialize().then(() => {
-        logger.info("Knowledge graph engine initialized with persistence");
-      }).catch((error) => {
-        logger.error("Failed to initialize knowledge graph engine", error as Error);
-      });
-      logger.info("Knowledge graph engine enabled", {
-        description: "Graph engine will process memories and provide context during recall"
-      });
-    }
+    // 初始化插件
+    plugin.initialize(config);
 
+    // 启动Web服务器
     const webUiPort = config.webUiPort || 3456;
     webServer.start(webUiPort).catch((error: Error) => {
       logger.error("[WEB] Failed to start server", error);
     });
 
+    // 注册API工具
     api.registerTool(
       {
         name: "memory_recall",
@@ -97,7 +193,7 @@ export default definePluginEntry({
         }),
         async execute(_id: string, params: { query: string; limit?: number }) {
           const recallLogger = getLogger();
-          recallLogger.debug("memory_recall called", { query: params.query, limit: params.limit });
+          recallLogger.debug("memory_recall called via plugin", { query: params.query, limit: params.limit });
 
           const result = await memoryService.recall(params.query, { limit: params.limit });
           const lines: string[] = [];
@@ -135,7 +231,7 @@ export default definePluginEntry({
         }),
         async execute(_id: string, params: { content: string; type?: string; importance?: number }) {
           const writeLogger = getLogger();
-          writeLogger.debug("memory_store called", { type: params.type, importance: params.importance });
+          writeLogger.debug("memory_store called via plugin", { type: params.type, importance: params.importance });
 
           const memory = await memoryService.store({
             content: params.content,
@@ -164,7 +260,7 @@ export default definePluginEntry({
         }),
         async execute(_id: string, params: { id: string }) {
           const forgetLogger = getLogger();
-          forgetLogger.debug("memory_forget called", { id: params.id });
+          forgetLogger.debug("memory_forget called via plugin", { id: params.id });
 
           const success = await memoryService.delete(params.id);
           
@@ -188,10 +284,10 @@ export default definePluginEntry({
         parameters: Type.Object({}),
         async execute(_id: string, _params: Record<string, never>) {
           const statsLogger = getLogger();
-          statsLogger.debug("omms_stats called");
+          statsLogger.debug("omms_stats called via plugin");
 
           const stats = await memoryService.getStats();
-          const logStats = memoryService.getLogger().getStats();
+          const logStats = getLogger().getStats();
 
           statsLogger.debug("omms_stats complete", { total: stats.total, logs: logStats.total });
 
@@ -209,39 +305,7 @@ export default definePluginEntry({
       { optional: true }
     );
 
-    api.registerTool(
-      {
-        name: "omms_logs",
-        label: "Memory Logs",
-        description: "View OMMS system logs and statistics",
-        parameters: Type.Object({
-          level: Type.Optional(Type.String({ description: "Log level (debug/info/warn/error)" })),
-          limit: Type.Optional(Type.Number({ default: 50 })),
-        }),
-        async execute(_id: string, params: { level?: string; limit?: number }) {
-          const logsLogger = getLogger();
-          const logs = logsLogger.getLogs({ limit: params.limit });
-          const stats = logsLogger.getStats();
-
-          const lines = [
-            `## OMMS Logs (${logs.length} entries)\n`,
-            `**Total logs:** ${stats.total}`,
-            `**By level:** debug=${stats.byLevel.debug}, info=${stats.byLevel.info}, warn=${stats.byLevel.warn}, error=${stats.byLevel.error}\n`,
-          ];
-
-          for (const log of logs.slice(-20)) {
-            lines.push(`\`${log.timestamp}\` [${log.level}] ${log.message}`);
-          }
-
-          return {
-            content: [{ type: "text" as const, text: lines.join("\n") }],
-            details: { logs, stats },
-          };
-        },
-      },
-      { optional: true }
-    );
-
+    // 注册钩子
     api.registerHook("before_prompt_build", async (event: any) => {
       const hookLogger = getLogger();
       hookLogger.info("[RECALL] ====== before_prompt_build HOOK START ======");
@@ -423,197 +487,6 @@ export default definePluginEntry({
           error: String(error)
         });
       }
-    });
-
-    api.registerHook("session:compact:after", async (event: any) => {
-      const hookLogger = getLogger();
-      hookLogger.info("[CAPTURE] ====== session:compact:after HOOK START ======");
-      hookLogger.info("[CAPTURE] Hook invocation", {
-        name: "session:compact:after",
-        params: {
-          sessionId: event.sessionId,
-          agentId: event.agentId,
-          messagesCount: event.messages?.length || 0,
-          messageCount: event.context?.messageCount,
-          compactedCount: event.context?.compactedCount,
-          summaryLength: event.context?.summaryLength,
-        }
-      });
-
-      const hookConfig = (api.pluginConfig || {}) as OMMSConfig;
-      if (!hookConfig.enableAutoCapture) {
-        hookLogger.info("[CAPTURE] Auto-capture disabled, skipping", {
-          method: "session:compact:after",
-          returns: "void"
-        });
-        return;
-      }
-
-      try {
-        const messages = event.messages || [];
-        const userMessages = messages.filter((m: any) => m.role === "user");
-        const assistantMessages = messages.filter((m: any) => m.role === "assistant");
-
-        hookLogger.debug("[CAPTURE] Messages breakdown", {
-          method: "session:compact:after",
-          params: {
-            total: messages.length,
-            user: userMessages.length,
-            assistant: assistantMessages.length,
-          }
-        });
-
-        for (const msg of userMessages.slice(-3)) {
-          hookLogger.debug("[CAPTURE] User message sample", {
-            method: "session:compact:after",
-            params: {
-              content: String(msg.content).slice(0, 80),
-            }
-          });
-        }
-
-        hookLogger.info("[CAPTURE] Starting extraction", {
-          method: "session:compact:after",
-          params: {
-            messagesToProcess: messages.length,
-            usingLLM: hookConfig.enableLLMExtraction,
-          }
-        });
-
-        const facts = await memoryService.extractFromMessages(messages);
-
-        hookLogger.info("[CAPTURE] Extraction result", {
-          method: "session:compact:after",
-          returns: {
-            factsExtracted: facts.length,
-          }
-        });
-
-        for (const fact of facts.slice(0, 10)) {
-          hookLogger.debug("[CAPTURE] Extracted fact", {
-            method: "session:compact:after",
-            params: {
-              type: fact.type,
-              confidence: fact.confidence,
-              content: String(fact.content).slice(0, 60),
-            }
-          });
-        }
-
-        let storedCount = 0;
-        for (const fact of facts.slice(0, hookConfig.maxMemoriesPerSession || 50)) {
-          const memory = await memoryService.store({
-            content: fact.content,
-            type: fact.type,
-            importance: fact.importance ?? 0.5,
-            sessionId: event.sessionId,
-            agentId: event.agentId,
-          });
-          storedCount++;
-          hookLogger.debug("[CAPTURE] Memory stored", {
-            method: "session:compact:after",
-            params: {
-              id: memory.id,
-              type: memory.type,
-              scope: memory.scope,
-              importance: memory.importance,
-            }
-          });
-        }
-
-        hookLogger.info("[CAPTURE] Storage complete", {
-          method: "session:compact:after",
-          returns: {
-            stored: storedCount,
-          }
-        });
-
-        hookLogger.info("[CAPTURE] Starting consolidation", {
-          method: "session:compact:after"
-        });
-        const consolidation = await memoryService.consolidate({
-          agentId: event.agentId,
-          sessionId: event.sessionId,
-          scope: "session",
-        });
-
-        hookLogger.info("[CAPTURE] Consolidation complete", {
-          method: "session:compact:after",
-          returns: {
-            archived: consolidation.archived,
-            deleted: consolidation.deleted,
-            promoted: consolidation.promoted,
-          }
-        });
-
-        if (hookConfig.enableGraphEngine) {
-          hookLogger.info("[GRAPH] Processing knowledge graph for new memories", {
-            method: "session:compact:after"
-          });
-          try {
-            const memories = await memoryService.getAll({ agentId: event.agentId });
-            const recentMemories = memories.slice(0, 5);
-            
-            for (const memory of recentMemories) {
-              await getGraphEngine().process(memory);
-            }
-
-            hookLogger.info("[GRAPH] Knowledge graph updated", {
-              method: "session:compact:after",
-              returns: {
-                processedMemories: recentMemories.length,
-              }
-            });
-          } catch (error) {
-            hookLogger.error("[GRAPH] Failed to process knowledge graph", {
-              method: "session:compact:after",
-              error: String(error)
-            });
-          }
-        }
-
-        hookLogger.info("[CAPTURE] ====== session:compact:after HOOK END ======", {
-          method: "session:compact:after",
-          returns: "void"
-        });
-      } catch (error) {
-        hookLogger.error("[CAPTURE] Hook failed", {
-                   method: "session:compact:after",
-          params: {
-            sessionId: event.sessionId,
-            agentId: event.agentId,
-          },
-          error: String(error)
-        });
-      }
-    });
-
-    api.registerHook("message:received", async (event: any) => {
-      const hookLogger = getLogger();
-      const channelId = event.context?.channelId;
-      const channelType = event.context?.from;
-      const role = event.context?.role;
-      
-      hookLogger.info("[MESSAGE] Received", {
-        channelType,
-        channelId,
-        role,
-        timestamp: new Date().toISOString()
-      });
-    });
-
-    api.registerHook("message:sent", async (event: any) => {
-      const hookLogger = getLogger();
-      const channelId = event.context?.channelId;
-      const to = event.context?.to;
-      const success = event.context?.success;
-      
-      hookLogger.info("[MESSAGE] Sent", {
-        channelId,
-        to,
-        success,
-        timestamp: new Date().toISOString()
-      });
     });
 
     // Initialize Dreaming mechanism

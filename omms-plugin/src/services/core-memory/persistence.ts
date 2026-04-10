@@ -1,6 +1,6 @@
 import lancedb, { Index } from "@lancedb/lancedb";
-import type { Memory, VectorSearchResult, OMMSConfig } from "../../types/src/index.js";
-import { getLogger } from "../logging/src/logger.js";
+import type { Memory, VectorSearchResult, OMMSConfig } from "../../types/index.js";
+import { getLogger } from "../logging/logger.js";
 import { join } from "path";
 import { Mutex } from "async-mutex";
 
@@ -125,7 +125,16 @@ export class Persistence {
     }
 
     try {
+      this.logger.debug("[LANCE] Loading all memories", {
+        method: "loadAll",
+        params: {},
+        returns: "Memory[]"
+      });
+      
+      const startTime = Date.now();
       const results = await this.table.query().toArray();
+      const duration = Date.now() - startTime;
+      
       const memories: Memory[] = results
         .filter((row: any) => row.id !== "__omms_init__" && !row.id.startsWith("__"))
         .map((row: any) => ({
@@ -149,10 +158,31 @@ export class Persistence {
           updateCount: Number(row.updateCount) || 0,
         }));
 
-      this.logger.info("[LANCE] Loaded memories", { count: memories.length });
+      this.logger.info("[LANCE] Loaded memories", { 
+        method: "loadAll",
+        params: {},
+        returns: "Memory[]",
+        data: { 
+          count: memories.length,
+          duration,
+          types: memories.reduce((acc, m) => {
+            acc[m.type] = (acc[m.type] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>),
+          scopes: memories.reduce((acc, m) => {
+            acc[m.scope] = (acc[m.scope] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>)
+        }
+      });
+      
       return memories;
     } catch (error) {
-      this.logger.error("[LANCE] Failed to load memories", error);
+      this.logger.error("[LANCE] Failed to load memories", {
+        method: "loadAll",
+        params: {},
+        error: String(error)
+      });
       return [];
     }
   }
@@ -164,6 +194,7 @@ export class Persistence {
 
     await this.writeMutex.runExclusive(async () => {
       try {
+        const startTime = Date.now();
         const vectorArray = vector ? new Float32Array(vector) : new Float32Array(this.vectorDimension);
 
         await this.table.add([{
@@ -187,15 +218,32 @@ export class Persistence {
           recallCount: memory.recallCount || 0,
           updateCount: memory.updateCount,
         }]);
+        
+        const duration = Date.now() - startTime;
 
         this.logger.info("[STORE] Memory saved", {
-          id: memory.id,
-          type: memory.type,
-          importance: memory.importance,
-          scope: memory.scope,
+          method: "save",
+          params: { 
+            id: memory.id,
+            type: memory.type,
+            importance: memory.importance,
+            scope: memory.scope
+          },
+          returns: "void",
+          data: { 
+            duration,
+            contentLength: memory.content.length,
+            tagsCount: memory.tags.length,
+            hasVector: !!vector,
+            block: memory.block
+          }
         });
       } catch (error) {
-        this.logger.error("[LANCE] Failed to save", error);
+        this.logger.error("[LANCE] Failed to save", {
+          method: "save",
+          params: { id: memory.id },
+          error: String(error)
+        });
       }
     });
   }
@@ -207,13 +255,18 @@ export class Persistence {
 
     await this.writeMutex.runExclusive(async () => {
       try {
+        const startTime = Date.now();
+        
         const existingRecords = await this.table.query()
           .where(`id = "${memory.id}"`)
           .limit(1)
           .toArray();
 
         if (existingRecords.length === 0) {
-          this.logger.warn("[LANCE] Memory not found, skipping update", { id: memory.id });
+          this.logger.warn("[LANCE] Memory not found, skipping update", { 
+            method: "update",
+            params: { id: memory.id }
+          });
           return;
         }
 
@@ -235,11 +288,26 @@ export class Persistence {
             usedByAgents: JSON.stringify(memory.usedByAgents || []),
           },
         });
+        
+        const duration = Date.now() - startTime;
 
-        this.logger.debug("[LANCE] Memory updated", { id: memory.id });
+        this.logger.debug("[LANCE] Memory updated", {
+          method: "update",
+          params: { id: memory.id },
+          returns: "void",
+          data: {
+            duration,
+            type: memory.type,
+            scope: memory.scope,
+            importance: memory.importance.toFixed(2),
+            updateCount: memory.updateCount,
+            recallCount: memory.recallCount
+          }
+        });
       } catch (error) {
         this.logger.error("[LANCE] Failed to update", {
-          id: memory.id,
+          method: "update",
+          params: { id: memory.id },
           error: String(error),
           code: (error as any)?.code,
         });
@@ -254,10 +322,42 @@ export class Persistence {
 
     await this.writeMutex.runExclusive(async () => {
       try {
+        const startTime = Date.now();
+        
+        const existingRecords = await this.table.query()
+          .where(`id = "${id}"`)
+          .limit(1)
+          .toArray();
+          
+        if (existingRecords.length === 0) {
+          this.logger.warn("[LANCE] Memory not found for deletion", { 
+            method: "delete",
+            params: { id }
+          });
+          return;
+        }
+        
         await this.table.delete(`id = "${id}"`);
-        this.logger.debug("[LANCE] Memory deleted", { id });
+        
+        const duration = Date.now() - startTime;
+
+        this.logger.debug("[LANCE] Memory deleted", {
+          method: "delete",
+          params: { id },
+          returns: "void",
+          data: {
+            duration,
+            memoryType: existingRecords[0].type,
+            scope: existingRecords[0].scope,
+            content: existingRecords[0].content.slice(0, 50) + "..."
+          }
+        });
       } catch (error) {
-        this.logger.error("[LANCE] Failed to delete", error);
+        this.logger.error("[LANCE] Failed to delete", {
+          method: "delete",
+          params: { id },
+          error: String(error)
+        });
       }
     });
   }
@@ -267,27 +367,58 @@ export class Persistence {
       await this.initialize();
     }
     
+    const searchId = `search_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     return this.writeMutex.runExclusive(async () => {
       try {
+        this.logger.debug("[LANCE] Vector search started", {
+          method: "vectorSearch",
+          params: { searchId, queryDimensions: queryVector.length, limit },
+          returns: "VectorSearchResult[]"
+        });
+        
         // 检查查询向量维度与表向量列维度是否匹配
         if (queryVector.length !== this.vectorDimension) {
           this.logger.warn(
             "[LANCE] Vector dimension mismatch", 
-            { expected: this.vectorDimension, actual: queryVector.length }
+            { 
+              searchId,
+              expected: this.vectorDimension, 
+              actual: queryVector.length 
+            }
           );
           return []; // 静默处理，避免查询失败
         }
 
+        const startTime = Date.now();
         const results = await this.table.vectorSearch(queryVector)
           .limit(limit)
           .toArray();
+        const duration = Date.now() - startTime;
 
-        return results.map((row: any) => ({
+        const searchResults = results.map((row: any) => ({
           id: String(row.id),
           score: row._distance || 0,
         }));
+
+        this.logger.debug("[LANCE] Vector search completed", {
+          method: "vectorSearch",
+          params: { searchId, queryDimensions: queryVector.length, limit },
+          returns: "VectorSearchResult[]",
+          data: { 
+            duration,
+            resultCount: searchResults.length,
+            scores: searchResults.slice(0, 3).map((r: VectorSearchResult) => r.score.toFixed(4))
+          }
+        });
+
+        return searchResults;
       } catch (error) {
-        this.logger.error("[LANCE] Vector search failed", error);
+        this.logger.error("[LANCE] Vector search failed", {
+          method: "vectorSearch",
+          params: { searchId, queryDimensions: queryVector.length, limit },
+          error: String(error)
+        });
         return [];
       }
     });

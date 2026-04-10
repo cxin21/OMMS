@@ -1,6 +1,6 @@
-import { getLogger } from "../logging/src/logger.js";
+import { getLogger } from "../logging/logger.js";
 import { getLLMService } from "./llm.js";
-import type { ExtractedFact, MemoryType, LLMExtractionInput, LLMExtractionOutput } from "../../types/src/index.js";
+import type { ExtractedFact, MemoryType, LLMExtractionInput, LLMExtractionOutput } from "../../types/index.js";
 
 const logger = getLogger();
 

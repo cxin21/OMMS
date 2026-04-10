@@ -15,14 +15,16 @@
 | `enableLLMExtraction` | boolean | `true` | 是否使用 LLM 进行内容提取 |
 | `enableVectorSearch` | boolean | `true` | 是否启用向量搜索 |
 | `enableProfile` | boolean | `true` | 是否生成用户画像 |
-| `enableGraphEngine` | boolean | `false` | 是否启用知识图谱引擎 |
+| `enableSessionSummary` | boolean | `false` | 是否启用会话摘要功能（预留字段） |
+| `enableGraphEngine` | boolean | `true` | 是否启用知识图谱引擎（使用 ReactFlow 可视化） |
 
 ### 1.2 功能限制
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `maxMemoriesPerSession` | number | `50` | 每个会话的最大记忆数量 |
-| `maxExtractionResults` | number | `50` | 每次对话的最大记忆提取数量 |
+| `maxExtractionResults` | number | `10` | 每次对话的最大记忆提取数量 |
+| `autoArchiveThreshold` | number | `0.3` | 自动归档的重要性评分阈值 |
 | `webUiPort` | number | `3456` | Web UI 访问端口 |
 
 ---
@@ -204,12 +206,19 @@
 
 ---
 
-## 10. 日志配置
+## 10. 向量存储配置
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `logging.level` | string | `info` | 日志级别 |
-| `logging.output` | string | `console` | 日志输出位置 |
+| `vectorStore.type` | string | `lancedb` | 向量存储类型（lancedb 或 memory） |
+| `vectorStore.vectorDimensionMismatch` | string | `warn` | 向量维度不匹配处理方式（warn、rebuild、use-existing） |
+
+## 11. 日志配置
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `logging.level` | string | `info` | 日志级别（debug、info、warn、error） |
+| `logging.output` | string | `console` | 日志输出位置（console、file、both） |
 | `logging.filePath` | string | `~/.openclaw/omms-logs` | 日志文件路径 |
 
 ---
@@ -325,8 +334,17 @@
 |------|------|
 | `HOME` | 用户主目录（用于确定数据存储路径） |
 | `USERPROFILE` | Windows 用户目录（备用） |
-| `OPENAI_API_KEY` | OpenAI API 密钥 |
-| `SILICONFLOW_API_KEY` | SiliconFlow API 密钥 |
+| `OMMS_WEB_UI_PORT` | Web UI 端口（默认 3456） |
+| `OMMS_CONFIG_DIR` | 配置文件路径（默认 ~/.openclaw） |
+| `OMMS_DATA_DIR` | 数据目录（默认 omms-data） |
+| `OMMS_LOGS_DIR` | 日志目录（默认 omms-logs） |
+| `OMMS_LLM_MODEL` | LLM 模型名称（默认 abab6.5s-chat） |
+| `OMMS_LLM_BASE_URL` | LLM API 地址（默认 https://api.minimax.chat/v1） |
+| `OMMS_LLM_API_KEY` | LLM API 密钥 |
+| `OMMS_EMBEDDING_MODEL` | 嵌入模型名称（默认 text-embedding-3-small） |
+| `OMMS_EMBEDDING_DIMENSIONS` | 嵌入维度（默认 1536） |
+| `OMMS_EMBEDDING_BASE_URL` | 嵌入 API 地址（默认 https://api.siliconflow.cn/v1） |
+| `OMMS_EMBEDDING_API_KEY` | 嵌入 API 密钥 |
 
 ---
 

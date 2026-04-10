@@ -38,10 +38,18 @@ npm install
 # 3. 编译
 npm run build
 
-# 4. 在 OpenClaw 中安装
-openclaw plugins install ./omms-plugin --force
+# 4. 构建 Web UI
+cd ../omms-ui
+npm install
+npm run build
+cd ../omms-plugin
+mkdir -p dist/ui
+cp -r ../omms-ui/dist/* dist/ui/
 
-# 5. 启动
+# 5. 在 OpenClaw 中安装
+openclaw plugins install /home/hechen/OMMS/omms-plugin --force
+
+# 6. 启动
 openclaw gateway start
 ```
 
@@ -51,12 +59,8 @@ openclaw gateway start
 
 ```
 OMMS/
-├── modules/                          # 功能模块
+├── modules/                          # 功能模块（与omms-plugin重复，已弃用）
 │   ├── core-memory/                 # 核心记忆模块
-│   │   ├── DESIGN.md               # 设计文档
-│   │   ├── README.md               # 使用说明
-│   │   ├── CONFIG.md               # 配置项说明
-│   │   └── src/                    # 源代码
 │   ├── vector-search/              # 向量搜索模块
 │   ├── llm/                        # LLM 模块
 │   ├── dreaming/                   # Dreaming 模块
@@ -64,16 +68,27 @@ OMMS/
 │   ├── profile/                    # 用户画像模块
 │   ├── logging/                    # 日志模块
 │   └── types/                      # 共享类型定义
-├── omms-plugin/                     # OpenClaw 插件
+├── omms-plugin/                     # OpenClaw 插件（主实现）
 │   ├── src/
+│   │   ├── services/               # 核心服务
+│   │   │   ├── core-memory/        # 核心记忆管理
+│   │   │   ├── vector-search/      # 向量搜索
+│   │   │   ├── llm/                # LLM 调用
+│   │   │   ├── dreaming/           # Dreaming 机制
+│   │   │   ├── knowledge-graph/    # 知识图谱
+│   │   │   ├── profile/            # 用户画像
+│   │   │   ├── logging/            # 日志管理
+│   │   │   └── types/              # 类型定义
 │   │   ├── tools/                  # 工具集
-│   │   ├── web-server/             # Web 服务
-│   │   ├── cli/                    # CLI 工具
-│   │   ├── api/                    # API 接口
-│   │   ├── index.ts                # 入口文件
-│   │   └── web-server.ts           # Web 服务器
-│   └── openclaw.plugin.json        # 插件配置
-├── omms-ui/                         # Web UI
+│   │   ├── web-server.ts           # Web 服务器
+│   │   ├── config.ts               # 配置管理
+│   │   ├── api.ts                  # API 接口
+│   │   └── index.ts                # 入口文件
+│   └── package.json                # 依赖配置
+├── omms-ui/                         # Web UI（React + ReactFlow）
+│   ├── src/
+│   ├── dist/                       # 构建产物
+│   └── package.json
 └── docs/                            # 项目文档
 ```
 

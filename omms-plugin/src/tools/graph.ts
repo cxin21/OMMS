@@ -1,5 +1,5 @@
 import { Type } from "@sinclair/typebox";
-import { getGraphEngine } from "../services/graph.js";
+import { getGraphEngine } from "../services/knowledge-graph/graph.js";
 import type { GraphNode, GraphEdge } from "../types/index.js";
 
 export const ommsGraphTool = {

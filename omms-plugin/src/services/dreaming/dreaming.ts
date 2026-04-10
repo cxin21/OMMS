@@ -1,7 +1,8 @@
-import { getLogger } from '../logging/src/logger.js';
-import { memoryService } from '../core-memory/src/memory.js';
-import { scorer } from '../core-memory/src/scorer.js';
-import type { DreamingConfig, DreamingLog, DreamingStatus, LightPhaseResult, DeepPhaseResult, RemPhaseResult, DreamingResult } from '../../types/src/dreaming.js';
+import { getLogger } from '../logging/logger.js';
+import { memoryService } from '../core-memory/memory.js';
+import { scorer } from '../core-memory/scorer.js';
+import type { DreamingConfig, DreamingLog, DreamingStatus, LightPhaseResult, DeepPhaseResult, RemPhaseResult, DreamingResult } from '../../types/index.js';
+import { configManager } from '../../config.js';
 
 class DreamingService {
   private config: DreamingConfig;
@@ -45,7 +46,7 @@ class DreamingService {
         }
       },
       output: {
-        path: "~/.openclaw/memory/DREAMS.md",
+        path: `${configManager.getConfigDir()}/memory/DREAMS.md`,
         maxReflections: 5,
         maxThemes: 10
       },
@@ -53,7 +54,7 @@ class DreamingService {
         level: 'info',
         consoleOutput: true,
         fileOutput: true,
-        outputPath: "~/.openclaw/omms-dreaming.log",
+        outputPath: `${configManager.getConfigDir()}/omms-dreaming.log`,
         maxFileSize: "10MB",
         maxFiles: 5
       }
@@ -136,7 +137,7 @@ class DreamingService {
       clearTimeout(this.scheduler);
     }
 
-    if (this.config.schedule.enabled) {
+    if (this.config.schedule?.enabled) {
       this.nextRun = this.calculateNextRunTime();
       const delay = this.nextRun.getTime() - Date.now();
       
@@ -187,7 +188,7 @@ class DreamingService {
 
   private calculateNextRunTime(): Date {
     const now = new Date();
-    const [hours, minutes] = this.config.schedule.time.split(':').map(Number);
+    const [hours, minutes] = this.config.schedule?.time?.split(':').map(Number) || [2, 0];
     
     const next = new Date(now);
     next.setHours(hours, minutes, 0, 0);
@@ -331,7 +332,7 @@ class DreamingService {
           score: promotionScore.toFixed(2)
         });
 
-        if (promotionScore > this.config.promotion.minScore) {
+        if (promotionScore > (this.config.promotion?.minScore ?? 0.5)) {
           const targetScope = this.determineTargetScope(candidate.memory, promotionScore);
           
           if (targetScope && targetScope !== candidate.memory.scope) {
@@ -416,7 +417,7 @@ class DreamingService {
     const recallFrequency = Math.min(memory.recallCount / 10, 1.0);
     const relevance = await this.calculateRelevance(memory);
     const diversity = await this.calculateDiversity(memory);
-    const recency = Math.max(0, 1 - (hoursOld / this.config.memoryThreshold.maxAgeHours));
+    const recency = Math.max(0, 1 - (hoursOld / (this.config.memoryThreshold?.maxAgeHours ?? 24)));
     const consolidation = await this.calculateConsolidation(memory);
     const conceptualRichness = await this.calculateConceptualRichness(memory);
 
@@ -431,16 +432,24 @@ class DreamingService {
   }
 
   private calculatePromotionScore(signals: any): number {
-    const weights = this.config.promotion.weights;
-    const totalWeight = Object.values(weights).reduce((sum, w) => sum + w, 0);
+    const weights = this.config.promotion?.weights ?? {
+      recallFrequency: 0.25,
+      relevance: 0.2,
+      diversity: 0.15,
+      recency: 0.15,
+      consolidation: 0.15,
+      conceptualRichness: 0.1
+    };
+    
+    const totalWeight: number = Object.values(weights as Record<string, number>).reduce((sum: number, w: number) => sum + w, 0);
 
     const score = (
-      (signals.recallFrequency * weights.recallFrequency) +
-      (signals.relevance * weights.relevance) +
-      (signals.diversity * weights.diversity) +
-      (signals.recency * weights.recency) +
-      (signals.consolidation * weights.consolidation) +
-      (signals.conceptualRichness * weights.conceptualRichness)
+      (signals.recallFrequency * (weights.recallFrequency ?? 0.25)) +
+      (signals.relevance * (weights.relevance ?? 0.2)) +
+      (signals.diversity * (weights.diversity ?? 0.15)) +
+      (signals.recency * (weights.recency ?? 0.15)) +
+      (signals.consolidation * (weights.consolidation ?? 0.15)) +
+      (signals.conceptualRichness * (weights.conceptualRichness ?? 0.1))
     ) / totalWeight;
 
     return score;
@@ -463,7 +472,7 @@ class DreamingService {
     const memoryDate = new Date(createdAt);
     const hoursOld = (now.getTime() - memoryDate.getTime()) / (1000 * 60 * 60);
     
-    return Math.max(0, 1 - (hoursOld / this.config.memoryThreshold.maxAgeHours));
+    return Math.max(0, 1 - (hoursOld / (this.config.memoryThreshold?.maxAgeHours ?? 24)));
   }
 
   private async calculateRelevance(memory: any): Promise<number> {
@@ -513,7 +522,7 @@ class DreamingService {
     // 基于记忆标签和内容提取主题
     const themes = new Map<string, any>();
     
-    memories.forEach(item => {
+    memories.forEach((item: any) => {
       const memory = item.memory;
       
       // 使用类型作为基础主题
@@ -547,7 +556,7 @@ class DreamingService {
     // 过滤只有一个记忆的主题
     const filteredThemes = Array.from(themes.values())
       .filter(theme => theme.relatedMemories.length > 1)
-      .slice(0, this.config.output.maxThemes);
+      .slice(0, this.config.output?.maxThemes ?? 10);
     
     this.logger.debug("[DREAMING] Extracted themes", { count: filteredThemes.length });
     return filteredThemes;
@@ -572,7 +581,7 @@ class DreamingService {
     
     // 为每个主题生成反思
     themes.forEach((theme, index) => {
-      const relatedMemories = memories.filter(item => 
+      const relatedMemories = memories.filter((item: any) => 
         theme.relatedMemories.includes(item.memory.id)
       );
       
@@ -591,7 +600,7 @@ class DreamingService {
     }
     
     this.logger.debug("[DREAMING] Generated reflections", { count: reflections.length });
-    return reflections.slice(0, this.config.output.maxReflections);
+    return reflections.slice(0, this.config.output?.maxReflections ?? 10);
   }
 
   private generateThemeReflection(theme: any, memories: any[]): any {
@@ -624,6 +633,7 @@ class DreamingService {
 
 ## Extracted Themes
 ${themes.map((theme, index) => `
+
 ### Theme ${index + 1}: ${theme.name}
 - **Description**: ${theme.description}
 - **Confidence**: ${(theme.confidence * 100).toFixed(1)}%
@@ -632,6 +642,7 @@ ${themes.map((theme, index) => `
 
 ## Generated Reflections
 ${reflections.map((reflection, index) => `
+
 ### Reflection ${index + 1}
 ${reflection.content}
 - **Confidence**: ${(reflection.confidence * 100).toFixed(1)}%
@@ -641,7 +652,8 @@ ${reflection.content}
     const fs = await import('fs/promises');
     const path = await import('path');
     
-    const dreamPath = this.config.output.path.replace('~', process.env.HOME || process.env.USERPROFILE || '');
+    // 使用统一配置路径，不再需要替换 ~
+    const dreamPath = this.config.output?.path ?? configManager.getConfigPath();
     const fullPath = path.resolve(dreamPath);
     
     try {

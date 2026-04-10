@@ -1,10 +1,11 @@
-import { memoryService, IN_MEMORY_STORE } from "./services/memory.js";
-import { getLogger } from "./services/logger.js";
-import { persistence } from "./services/persistence.js";
-import { scorer } from "./services/scorer.js";
-import { getDreamingService } from "./services/dreaming.js";
-import { getGraphEngine } from "./services/graph.js";
+import { memoryService, IN_MEMORY_STORE } from "./services/core-memory/memory.js";
+import { getLogger } from "./services/logging/logger.js";
+import { persistence } from "./services/core-memory/persistence.js";
+import { scorer } from "./services/core-memory/scorer.js";
+import { getDreamingService } from "./services/dreaming/dreaming.js";
+import { getGraphEngine } from "./services/knowledge-graph/graph.js";
 import type { DreamingStatus, DreamingResult } from "./types/dreaming.js";
+import { configManager } from "./config.js";
 
 const logger = getLogger();
 
@@ -244,7 +245,58 @@ export function createApiHandlers() {
         const status = dreaming.getStatus();
         return {
           success: true,
-          data: status,
+          data: {
+            ...status,
+            config: {
+              ...status.config,
+              enabled: status.config.enabled ?? false,
+              schedule: {
+                ...status.config.schedule,
+                enabled: status.config.schedule?.enabled ?? true,
+                time: status.config.schedule?.time ?? "02:00",
+                timezone: status.config.schedule?.timezone ?? "Asia/Shanghai"
+              },
+              memoryThreshold: {
+                ...status.config.memoryThreshold,
+                enabled: status.config.memoryThreshold?.enabled ?? true,
+                minMemories: status.config.memoryThreshold?.minMemories ?? 50,
+                maxAgeHours: status.config.memoryThreshold?.maxAgeHours ?? 24
+              },
+              sessionTrigger: {
+                ...status.config.sessionTrigger,
+                enabled: status.config.sessionTrigger?.enabled ?? true,
+                afterSessions: status.config.sessionTrigger?.afterSessions ?? 5
+              },
+              promotion: {
+                ...status.config.promotion,
+                minScore: status.config.promotion?.minScore ?? 0.5,
+                weights: {
+                  ...status.config.promotion?.weights,
+                  recallFrequency: status.config.promotion?.weights?.recallFrequency ?? 0.25,
+                  relevance: status.config.promotion?.weights?.relevance ?? 0.2,
+                  diversity: status.config.promotion?.weights?.diversity ?? 0.15,
+                  recency: status.config.promotion?.weights?.recency ?? 0.15,
+                  consolidation: status.config.promotion?.weights?.consolidation ?? 0.15,
+                  conceptualRichness: status.config.promotion?.weights?.conceptualRichness ?? 0.1
+                }
+              },
+              output: {
+                ...status.config.output,
+                path: status.config.output?.path ?? configManager.getConfigPath(),
+                maxReflections: status.config.output?.maxReflections ?? 10,
+                maxThemes: status.config.output?.maxThemes ?? 10
+              },
+              logging: {
+                ...status.config.logging,
+                level: status.config.logging?.level ?? 'info',
+                consoleOutput: status.config.logging?.consoleOutput ?? true,
+                fileOutput: status.config.logging?.fileOutput ?? true,
+                outputPath: status.config.logging?.outputPath ?? configManager.getConfigPath(),
+                maxFileSize: status.config.logging?.maxFileSize ?? "10MB",
+                maxFiles: status.config.logging?.maxFiles ?? 5
+              }
+            }
+          },
         };
       } catch (error) {
         logger.error("API getDreamingStatus failed", error as Error);
@@ -404,8 +456,9 @@ export function createApiHandlers() {
       features?: Record<string, boolean>;
     }): Promise<ApiResponse> {
       try {
-        const configDir = `${process.env.HOME || process.env.USERPROFILE}/.openclaw`;
-        const configPath = `${configDir}/openclaw.json`;
+        // 使用统一配置管理模块
+        const configPath = configManager.getConfigPath();
+        const configDir = configManager.getConfigDir();
 
         logger.info("[API] Config save requested", {
           method: "saveConfig",

@@ -1,4 +1,4 @@
-import { memoryService } from "../services/memory.js";
+import { memoryService } from "../services/core-memory/memory.js";
 
 interface CLIContext {
   log: (message: string) => void;

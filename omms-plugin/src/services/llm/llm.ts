@@ -1,5 +1,5 @@
-import type { ExtractedFact, MemoryType, LLMExtractionInput, LLMExtractionOutput, LLMExtractionFact } from "../../types/src/index.js";
-import { getLogger } from "../logging/src/logger.js";
+import type { ExtractedFact, MemoryType, LLMExtractionInput, LLMExtractionOutput, LLMExtractionFact } from "../../types/index.js";
+import { getLogger } from "../logging/logger.js";
 
 export interface LLMConfig {
   provider: string;
@@ -87,7 +87,8 @@ export class LLMExtractor {
     }
   }
 
-  private parseFactsResponse(response: string): LLMExtractionFact[] {
+  // 通用响应解析方法
+  private parseResponseGeneric<T>(response: string, transform: (item: any) => T): T[] {
     try {
       const cleaned = response.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
       const parsed = JSON.parse(cleaned);
@@ -96,24 +97,28 @@ export class LLMExtractor {
         return [];
       }
 
-      const results: LLMExtractionFact[] = [];
+      const results: T[] = [];
 
       for (const item of parsed) {
         if (item.content && item.type) {
-          results.push({
-            content: String(item.content).slice(0, 500),
-            type: this.validateType(String(item.type)),
-            confidence: Number(item.confidence) || 0.6,
-            source: "llm",
-          });
+          results.push(transform(item));
         }
       }
 
       return results.slice(0, 20);
     } catch (error) {
-      this.logger.error("[LLM] Failed to parse facts response", { error });
+      this.logger.error("[LLM] Failed to parse response", { error });
       return [];
     }
+  }
+
+  private parseFactsResponse(response: string): LLMExtractionFact[] {
+    return this.parseResponseGeneric<LLMExtractionFact>(response, (item) => ({
+      content: String(item.content).slice(0, 500),
+      type: this.validateType(String(item.type)),
+      confidence: Number(item.confidence) || 0.6,
+      source: "llm",
+    }));
   }
 
   private async callLLM(conversation: string): Promise<string> {
@@ -152,33 +157,13 @@ export class LLMExtractor {
   }
 
   private parseResponse(response: string): ExtractedFact[] {
-    try {
-      const cleaned = response.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      const parsed = JSON.parse(cleaned);
-
-      if (!Array.isArray(parsed)) {
-        return [];
-      }
-
-      const results: ExtractedFact[] = [];
-
-      for (const item of parsed) {
-        if (item.content && item.type) {
-          results.push({
-            content: String(item.content).slice(0, 500),
-            type: this.validateType(String(item.type)),
-            confidence: Number(item.confidence) || 0.6,
-            source: "llm" as "llm",
-            importance: Number(item.confidence) || 0.6,
-          });
-        }
-      }
-
-      return results.slice(0, 20);
-    } catch (error) {
-      this.logger.error("Failed to parse LLM response", error);
-      return [];
-    }
+    return this.parseResponseGeneric<ExtractedFact>(response, (item) => ({
+      content: String(item.content).slice(0, 500),
+      type: this.validateType(String(item.type)),
+      confidence: Number(item.confidence) || 0.6,
+      source: "llm" as "llm",
+      importance: Number(item.confidence) || 0.6,
+    }));
   }
 
   private validateType(type: string): MemoryType {

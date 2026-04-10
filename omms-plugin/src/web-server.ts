@@ -3,7 +3,8 @@ import { readFile } from "fs/promises";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createApiHandlers } from "./api.js";
-import { getLogger } from "./services/logger.js";
+import { getLogger } from "./services/logging/logger.js";
+import { configManager } from "./config.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -20,7 +21,7 @@ const MIME_TYPES: Record<string, string> = {
 
 export class WebServer {
   private server: ReturnType<typeof createServer> | null = null;
-  private port = 3456;
+  private port = configManager.getWebUiPort();
   private uiPath: string;
   private api: ReturnType<typeof createApiHandlers>;
 

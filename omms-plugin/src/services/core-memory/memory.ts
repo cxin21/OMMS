@@ -7,14 +7,14 @@ import type {
   MemoryStats,
   OMMSConfig,
   ExtractedFact,
-} from "../../types/src/index.js";
+} from "../../types/index.js";
 import { scorer, ScorerConfig } from "./scorer.js";
-import { profileEngine } from "../profile/src/profile.js";
-import { getEmbeddingService } from "../vector-search/src/embedding.js";
-import { getLogger } from "../logging/src/logger.js";
+import { profileEngine } from "../profile/profile.js";
+import { getEmbeddingService } from "../vector-search/embedding.js";
+import { getLogger } from "../logging/logger.js";
 import { persistence } from "./persistence.js";
-import { getGraphEngine } from "../knowledge-graph/src/graph.js";
-import { getLLMService } from "../llm/src/llm.js";
+import { getGraphEngine } from "../knowledge-graph/graph.js";
+import { getLLMService } from "../llm/llm.js";
 
 const IN_MEMORY_STORE = new Map<string, Memory>();
 

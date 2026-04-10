@@ -1,5 +1,5 @@
-import type { MemoryType, MemoryBlock, ScoreInput, Memory, OMMSConfig } from "../../types/src/index.js";
-import { getLogger } from "../logging/src/logger.js";
+import type { MemoryType, MemoryBlock, ScoreInput, Memory, OMMSConfig } from "../../types/index.js";
+import { getLogger } from "../logging/logger.js";
 
 const logger = getLogger();
 
@@ -122,28 +122,46 @@ export class Scorer {
   }
 
   score(input: ScoreInput): number {
+    // 输入验证
+    if (!this.isValidScoreInput(input)) {
+      logger.warn("[SCORER] Invalid score input, returning default score", {
+        method: "score",
+        params: input
+      });
+      return 0.2; // 默认分数
+    }
+
     let score = 0.2;
 
-    score += TYPE_WEIGHTS[input.type] || 0;
+    // 类型权重验证
     const typeWeight = TYPE_WEIGHTS[input.type] || 0;
+    score += typeWeight;
 
-    score += input.confidence * 0.15;
+    // 置信度验证（0-1范围）
+    const validatedConfidence = Math.max(0, Math.min(1, input.confidence));
+    score += validatedConfidence * 0.15;
 
     const explicitBonus = input.explicit ? 0.25 : 0;
     score += explicitBonus;
 
-    const relatedBonus = Math.min(input.relatedCount * 0.02, 0.10);
-    if (input.relatedCount > 0) {
+    // 相关计数验证（非负整数）
+    const validatedRelatedCount = Math.max(0, Math.floor(input.relatedCount));
+    const relatedBonus = Math.min(validatedRelatedCount * 0.02, 0.10);
+    if (validatedRelatedCount > 0) {
       score += relatedBonus;
     }
 
-    const sessionBonus = input.sessionLength > 10 ? 0.05 : 0;
-    if (input.sessionLength > 10) {
+    // 会话长度验证（非负整数）
+    const validatedSessionLength = Math.max(0, Math.floor(input.sessionLength));
+    const sessionBonus = validatedSessionLength > 10 ? 0.05 : 0;
+    if (validatedSessionLength > 10) {
       score += sessionBonus;
     }
 
-    const turnBonus = input.turnCount > 5 ? 0.05 : 0;
-    if (input.turnCount > 5) {
+    // 轮数验证（非负整数）
+    const validatedTurnCount = Math.max(0, Math.floor(input.turnCount));
+    const turnBonus = validatedTurnCount > 5 ? 0.05 : 0;
+    if (validatedTurnCount > 5) {
       score += turnBonus;
     }
 
@@ -151,11 +169,67 @@ export class Scorer {
     
     logger.debug("[SCORER] Importance scored", {
       method: "score",
-      params: { type: input.type, confidence: input.confidence, explicit: input.explicit },
-      returns: { score: finalScore, breakdown: { base: 0.2, typeWeight, confidence: input.confidence * 0.15, explicitBonus, relatedBonus, sessionBonus, turnBonus } }
+      params: { 
+        type: input.type, 
+        confidence: validatedConfidence, 
+        explicit: input.explicit,
+        relatedCount: validatedRelatedCount,
+        sessionLength: validatedSessionLength,
+        turnCount: validatedTurnCount
+      },
+      returns: { 
+        score: finalScore, 
+        breakdown: { 
+          base: 0.2, 
+          typeWeight, 
+          confidence: validatedConfidence * 0.15, 
+          explicitBonus, 
+          relatedBonus, 
+          sessionBonus, 
+          turnBonus 
+        } 
+      }
     });
     
     return finalScore;
+  }
+
+  // 输入验证方法
+  private isValidScoreInput(input: ScoreInput): boolean {
+    const validTypes = Object.keys(TYPE_WEIGHTS) as MemoryType[];
+    const isValidType = validTypes.includes(input.type);
+    const isValidConfidence = typeof input.confidence === 'number' && input.confidence >= 0 && input.confidence <= 1;
+    const isValidRelatedCount = typeof input.relatedCount === 'number' && input.relatedCount >= 0;
+    const isValidSessionLength = typeof input.sessionLength === 'number' && input.sessionLength >= 0;
+    const isValidTurnCount = typeof input.turnCount === 'number' && input.turnCount >= 0;
+    const isValidExplicit = typeof input.explicit === 'boolean';
+
+    if (!isValidType) {
+      logger.warn("[SCORER] Invalid memory type", { type: input.type, validTypes });
+      return false;
+    }
+    if (!isValidConfidence) {
+      logger.warn("[SCORER] Invalid confidence value", { confidence: input.confidence });
+      return false;
+    }
+    if (!isValidRelatedCount) {
+      logger.warn("[SCORER] Invalid related count", { relatedCount: input.relatedCount });
+      return false;
+    }
+    if (!isValidSessionLength) {
+      logger.warn("[SCORER] Invalid session length", { sessionLength: input.sessionLength });
+      return false;
+    }
+    if (!isValidTurnCount) {
+      logger.warn("[SCORER] Invalid turn count", { turnCount: input.turnCount });
+      return false;
+    }
+    if (!isValidExplicit) {
+      logger.warn("[SCORER] Invalid explicit flag", { explicit: input.explicit });
+      return false;
+    }
+
+    return true;
   }
 
   decideBlock(importance: number): MemoryBlock {

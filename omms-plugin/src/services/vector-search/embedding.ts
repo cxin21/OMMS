@@ -1,4 +1,4 @@
-import { getLogger } from "../logging/src/logger.js";
+import { getLogger } from "../logging/logger.js";
 
 export interface EmbeddingConfig {
   model: string;

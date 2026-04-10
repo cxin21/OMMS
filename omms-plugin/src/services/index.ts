@@ -1,11 +1,15 @@
-export { extractor, Extractor } from "./extractor.js";
-export { scorer, Scorer } from "./scorer.js";
-export type { ScorerConfig } from "./scorer.js";
-export { profileEngine, ProfileEngine } from "./profile.js";
-export { getGraphEngine, GraphEngine } from "./graph.js";
-export { memoryService, MemoryService } from "./memory.js";
-export { EmbeddingService, getEmbeddingService } from "./embedding.js";
-export type { EmbeddingConfig } from "./embedding.js";
-export { getDreamingService, DreamingService } from "./dreaming.js";
-export { getLLMService, getLLMExtractor, configureLLMExtractor, LLMExtractor } from "./llm.js";
-export type { LLMConfig } from "./llm.js";
+export { MemoryService } from "./core-memory/memory.js";
+export { Scorer } from "./core-memory/scorer.js";
+export type { ScorerConfig } from "./core-memory/scorer.js";
+export { Persistence } from "./core-memory/persistence.js";
+export { profileEngine, ProfileEngine } from "./profile/profile.js";
+export { getGraphEngine, GraphEngine } from "./knowledge-graph/graph.js";
+export { getDreamingService, DreamingService } from "./dreaming/dreaming.js";
+export { getLLMService, LLMExtractor, getLLMExtractor } from "./llm/llm.js";
+export type { LLMConfig } from "./types/index.js";
+export { EmbeddingService, getEmbeddingService } from "./vector-search/embedding.js";
+export type { EmbeddingConfig } from "./types/index.js";
+export { getLogger } from "./logging/logger.js";
+
+// 导出类型
+export * from "./types/index.js";

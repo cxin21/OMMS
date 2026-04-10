@@ -1,6 +1,6 @@
 import { Type } from "@sinclair/typebox";
-import { memoryService } from "../services/memory.js";
-import { getLogger } from "../services/logger.js";
+import { memoryService } from "../services/core-memory/memory.js";
+import { getLogger } from "../services/logging/logger.js";
 
 const logger = getLogger();
 
