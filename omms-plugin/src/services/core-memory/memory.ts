@@ -7,6 +7,7 @@ import type {
   MemoryStats,
   OMMSConfig,
   ExtractedFact,
+  RecallOptions,
 } from "../../types/index.js";
 import { scorer, ScorerConfig } from "./scorer.js";
 import { profileEngine } from "../profile/profile.js";
@@ -299,11 +300,17 @@ export class MemoryService {
   async store(params: {
     content: string;
     type: MemoryType;
-    importance: number;
+    importance?: number;
     scope?: MemoryScope;
     agentId?: string;
+    subject?: string;
     sessionId?: string;
     metadata?: Record<string, unknown>;
+    confidence?: number;
+    explicit?: boolean;
+    relatedCount?: number;
+    sessionLength?: number;
+    turnCount?: number;
   }): Promise<Memory> {
     this.logger.info("[STORE] Creating memory", {
       method: "store",
@@ -318,14 +325,31 @@ export class MemoryService {
 
     const ownerAgentId = params.agentId || "default";
 
+    // 计算 importance
+    let importance: number;
+    if (params.importance !== undefined) {
+      importance = params.importance;
+    } else {
+      const scoreInput = {
+        content: params.content,
+        type: params.type,
+        confidence: params.confidence ?? 0.5,
+        explicit: params.explicit ?? false,
+        relatedCount: params.relatedCount ?? 0,
+        sessionLength: params.sessionLength ?? 1,
+        turnCount: params.turnCount ?? 1
+      };
+      importance = scorer.score(scoreInput);
+    }
+
     const memory: Memory = {
       id: this.generateId(),
       content: params.content.slice(0, 1000),
       type: params.type,
-      importance: params.importance,
+      importance: importance,
       scopeScore: 0,
-      scope: params.scope || scorer.decideScope(params.importance),
-      block: scorer.decideBlock(params.importance),
+      scope: params.scope || scorer.decideScope(importance),
+      block: scorer.decideBlock(importance),
       ownerAgentId: ownerAgentId,
       agentId: params.agentId,
       sessionId: params.sessionId,
@@ -459,41 +483,55 @@ export class MemoryService {
   }
 
   async recall(
-    query: string,
-    options?: {
-      agentId?: string;
-      sessionId?: string;
-      scope?: MemoryScope | "all";
-      limit?: number;
-      boostOnRecall?: boolean;
-      isAutoRecall?: boolean; // 新增标志：是否是自动召回
-    }
+    options: RecallOptions
   ): Promise<RecallResult & { boosted: number }> {
+    const {
+      query,
+      agentId,
+      subject,
+      sessionId,
+      scope = "all",
+      types,
+      tags,
+      limit = 10,
+      minImportance,
+      maxAge
+    } = options;
     this.logger.info("[RECALL] Starting recall", {
       method: "recall",
-      params: { query, ...options },
+      params: options,
       returns: "RecallResult",
       agentId: options?.agentId,
       sessionId: options?.sessionId,
     });
 
     // 根据调用类型选择合适的limit
-    let limit: number;
-    if (options?.limit) {
-      limit = options.limit;
-    } else if (options?.isAutoRecall) {
-      limit = this.config.recall?.autoRecallLimit ?? 5;
+    let effectiveLimit: number;
+    if (options.limit) {
+      effectiveLimit = options.limit;
+    } else if (options.isAutoRecall) {
+      effectiveLimit = this.config.recall?.autoRecallLimit ?? 5;
     } else if (this.config.search?.limit) {
-      limit = this.config.search.limit;
+      effectiveLimit = this.config.search.limit;
     } else {
-      limit = this.config.recall?.manualRecallLimit ?? 10;
+      effectiveLimit = this.config.recall?.manualRecallLimit ?? 10;
     }
-    const memories = [...IN_MEMORY_STORE.values()];
+    let memories = [...IN_MEMORY_STORE.values()];
+
+    // 应用 scope 过滤器
+    if (options.scope && options.scope !== "all") {
+      memories = memories.filter(memory => memory.scope === options.scope);
+    }
+
+    // 应用 types 过滤器
+    if (options.types && options.types.length > 0) {
+      memories = memories.filter(memory => options.types!.includes(memory.type));
+    }
 
     if (memories.length === 0) {
       this.logger.info("[RECALL] No memories found", {
         method: "recall",
-        params: { query, ...options },
+        params: options,
         returns: "RecallResult",
         agentId: options?.agentId,
         sessionId: options?.sessionId,
@@ -513,7 +551,7 @@ export class MemoryService {
             searchResults = await persistence.vectorSearch(queryVector, limit * 2);
             this.logger.info("[RECALL] Vector search results", {
               method: "recall",
-              params: { query, ...options },
+              params: options,
               returns: "RecallResult",
               agentId: options?.agentId,
               sessionId: options?.sessionId,
@@ -522,7 +560,7 @@ export class MemoryService {
           } else {
             this.logger.warn("[RECALL] Embedding dimension mismatch, skipping vector search", {
               method: "recall",
-              params: { query, ...options },
+              params: options,
               returns: "RecallResult",
               agentId: options?.agentId,
               sessionId: options?.sessionId,
@@ -533,7 +571,7 @@ export class MemoryService {
       } catch (error) {
         this.logger.warn("[RECALL] Vector search failed, falling back to text search", {
           method: "recall",
-          params: { query, ...options },
+          params: options,
           returns: "RecallResult",
           agentId: options?.agentId,
           sessionId: options?.sessionId,
@@ -562,10 +600,26 @@ export class MemoryService {
       }
 
       // 混合搜索权重
-      const finalSimilarity = vectorSimilarity * vectorWeight + keywordSimilarity * keywordWeight;
+      let finalSimilarity: number;
+      if (this.config.enableVectorSearch !== false && vectorSimilarity > 0) {
+        finalSimilarity = vectorSimilarity * vectorWeight + keywordSimilarity * keywordWeight;
+      } else {
+        // 当禁用向量搜索或没有向量结果时，完全使用关键词相似度
+        finalSimilarity = keywordSimilarity;
+      }
+      
+      console.log(`Calculating similarity for memory: ${memory.id}`);
+      console.log(`  Content: ${memory.content}`);
+      console.log(`  Keyword similarity: ${keywordSimilarity}`);
+      console.log(`  Vector similarity: ${vectorSimilarity}`);
+      console.log(`  Vector weight: ${vectorWeight}`);
+      console.log(`  Keyword weight: ${keywordWeight}`);
+      console.log(`  Final similarity: ${finalSimilarity}`);
+      console.log(`  minSimilarity: ${minSimilarity}`);
 
       // 应用相似度阈值
       if (finalSimilarity < minSimilarity) {
+        console.log(`  Memory filtered out (finalSimilarity < minSimilarity)`);
         continue;
       }
 
@@ -575,11 +629,11 @@ export class MemoryService {
     }
 
     scoredMemories.sort((a, b) => b.score - a.score);
-    const topMemories = scoredMemories.slice(0, limit).map(s => s.memory);
+    const topMemories = scoredMemories.slice(0, effectiveLimit).map(s => s.memory);
 
     this.logger.info("[RECALL] Scored results", {
       method: "recall",
-      params: { query, ...options },
+      params: options,
       returns: "RecallResult",
       agentId: options?.agentId,
       sessionId: options?.sessionId,
@@ -619,7 +673,7 @@ export class MemoryService {
           memory.scopeScore = newScopeScore;
           this.logger.debug("[RECALL] Scope score boosted", {
             method: "recall",
-            params: { query, ...options },
+            params: options,
             returns: "RecallResult",
             agentId: options?.agentId,
             sessionId: options?.sessionId,
@@ -647,7 +701,7 @@ export class MemoryService {
 
     this.logger.info("[RECALL] Complete", {
       method: "recall",
-      params: { query, ...options },
+      params: options,
       returns: "RecallResult",
       agentId: options?.agentId,
       sessionId: options?.sessionId,
@@ -665,22 +719,34 @@ export class MemoryService {
   private calculateSimilarity(query: string, memory: Memory): number {
     const queryLower = query.toLowerCase();
     const contentLower = memory.content.toLowerCase();
+    
+    console.log('Calculating similarity between query:', queryLower, 'and content:', contentLower);
 
     if (contentLower.includes(queryLower)) {
+      console.log('Exact match found');
       return 0.9;
     }
 
     const queryWords = queryLower.split(/\s+/).filter(w => w.length > 2);
     const matchCount = queryWords.filter(w => contentLower.includes(w)).length;
 
+    console.log('Word matches found:', matchCount, 'of', queryWords.length);
+
     return Math.min(matchCount / Math.max(queryWords.length, 1), 0.8);
   }
 
   private calculateBoostAmount(memory: Memory): number {
-    if (memory.importance >= 0.8) return 0;
-    if (memory.importance >= 0.5) return 0.05;
-    if (memory.importance >= 0.3) return 0.08;
-    return 0.1;
+    const thresholds = this.config.boostPolicy?.thresholds || {
+      highImportance: 0.8,
+      mediumImportance: 0.5,
+      lowImportance: 0.3,
+      defaultBoost: 0.1
+    };
+    
+    if (memory.importance >= (thresholds.highImportance || 0.8)) return 0;
+    if (memory.importance >= (thresholds.mediumImportance || 0.5)) return this.config.boostPolicy?.lowBoost || 0.05;
+    if (memory.importance >= (thresholds.lowImportance || 0.3)) return 0.08;
+    return thresholds.defaultBoost || 0.1;
   }
 
   private isEffectiveUse(memory: Memory, agentId: string, query: string): boolean {

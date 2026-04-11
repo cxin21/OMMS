@@ -11,13 +11,14 @@ export class Persistence {
   private logger = getLogger();
   private dbPath: string;
   private writeMutex = new Mutex();
-  private vectorDimension = 1024;
+  private vectorDimension: number;
   private config: OMMSConfig = {};
 
   constructor(config: OMMSConfig = {}) {
     const homeDir = process.env.HOME || process.env.USERPROFILE || "/tmp";
     this.dbPath = join(homeDir, ".openclaw", "omms-data");
     this.config = config;
+    this.vectorDimension = config.vectorStore?.defaultDimensions || 1024;
   }
 
   updateConfig(config: OMMSConfig): void {
@@ -95,8 +96,15 @@ export class Persistence {
       this.table = await this.db.createTable("memories", [emptyRecord]);
       
       try {
+        const indexConfig = this.config.vectorStore?.indexConfig || {
+          numPartitions: 128,
+          numSubVectors: 96
+        };
         await this.table.createIndex("vector", {
-          config: Index.ivfPq({ numPartitions: 128, numSubVectors: 96 }),
+          config: Index.ivfPq({ 
+            numPartitions: indexConfig.numPartitions, 
+            numSubVectors: indexConfig.numSubVectors 
+          }),
         });
       } catch (indexError) {
         this.logger.warn("[LANCE] Failed to create vector index", { error: String(indexError) });

@@ -21,7 +21,7 @@ export class CoreFunctionLayer implements CoreFunctionInterface {
       return result.id;
     },
     recall: async (query: string, options?: any) => {
-      const result = await memoryService.recall(query, options);
+      const result = await memoryService.recall({ query, ...options });
       this.loggerInstance.debug("Memory recalled via abstract interface", {
         query: query.slice(0, 50),
         count: result.memories.length
@@ -87,7 +87,7 @@ export class CoreFunctionLayer implements CoreFunctionInterface {
     },
     search: async (query: string, limit?: number) => {
       const [vector] = await getEmbeddingService().embed([query]);
-      const searchResult = await memoryService.recall(query, { limit: limit || 10 });
+      const searchResult = await memoryService.recall({ query, limit: limit || 10 });
       this.logger.debug("Vector search via abstract interface", {
         query: query.slice(0, 50),
         resultCount: searchResult.memories.length

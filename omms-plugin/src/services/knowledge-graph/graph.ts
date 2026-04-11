@@ -170,6 +170,7 @@ export class GraphEngine {
             if (!existing) {
               entities.push({
                 id: entityId,
+                label: normalizedText,
                 name: normalizedText,
                 type,
                 aliases: [],
@@ -216,6 +217,7 @@ export class GraphEngine {
                     id: edgeId,
                     source: source.id,
                     target: target.id,
+                    relation: type,
                     type,
                     weight: 1.0,
                     evidence: [content.slice(0, 100)],
@@ -238,6 +240,13 @@ export class GraphEngine {
   // 添加节点
   private addNode(node: GraphNode): void {
     const existing = this.nodes.get(node.id);
+
+    this.logger.debug("Adding node to graph", {
+      method: "addNode",
+      params: { nodeId: node.id, label: node.label },
+      data: { existing: !!existing, mentionCount: node.mentionCount }
+    });
+
     if (existing) {
       existing.mentionCount += node.mentionCount;
       existing.metadata = {
@@ -245,19 +254,54 @@ export class GraphEngine {
         ...node.metadata,
         memoryIds: [...new Set([...(existing.metadata.memoryIds || []), ...(node.metadata.memoryIds || [])])]
       };
+
+      this.logger.debug("Node updated", {
+        method: "addNode",
+        params: { nodeId: node.id },
+        returns: "void",
+        data: { newMentionCount: existing.mentionCount }
+      });
     } else {
       this.nodes.set(node.id, node);
+
+      this.logger.debug("New node added", {
+        method: "addNode",
+        params: { nodeId: node.id },
+        returns: "void",
+        data: { label: node.label, type: node.type }
+      });
     }
   }
 
   // 添加边
   private addEdge(edge: GraphEdge): void {
     const existing = this.edges.get(edge.id);
+
+    this.logger.debug("Adding edge to graph", {
+      method: "addEdge",
+      params: { edgeId: edge.id, source: edge.source, target: edge.target },
+      data: { existing: !!existing, weight: edge.weight }
+    });
+
     if (existing) {
       existing.weight += edge.weight;
       existing.evidence = [...new Set([...existing.evidence, ...edge.evidence])];
+
+      this.logger.debug("Edge updated", {
+        method: "addEdge",
+        params: { edgeId: edge.id },
+        returns: "void",
+        data: { newWeight: existing.weight, evidenceCount: existing.evidence.length }
+      });
     } else {
       this.edges.set(edge.id, edge);
+
+      this.logger.debug("New edge added", {
+        method: "addEdge",
+        params: { edgeId: edge.id },
+        returns: "void",
+        data: { source: edge.source, target: edge.target, relation: edge.relation }
+      });
     }
   }
 

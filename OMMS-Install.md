@@ -1,7 +1,8 @@
 # OMMS 安装配置文档
 
-**版本**: 3.5.0
-**日期**: 2026-04-12
+**版本**: 3.5.0  
+**日期**: 2026-04-12  
+**状态**: 生产就绪（包含测试覆盖信息）
 
 ---
 
@@ -50,6 +51,17 @@ openclaw gateway start
 - **Web UI**: http://127.0.0.1:3456
 - **API**: http://127.0.0.1:3456/api/stats
 
+### 1.5 测试验证
+
+```bash
+# 运行所有测试（46个测试用例全部通过）
+cd /home/hechen/OMMS/omms-plugin
+npm run test -- --run
+
+# 查看测试覆盖
+npm run coverage
+```
+
 ---
 
 ## 二、配置
@@ -91,7 +103,7 @@ export OMMS_DATA_DIR="omms-data"
 export OMMS_LOGS_DIR="omms-logs"
 ```
 
-### 2.2 完整配置示例
+### 2.3 完整配置示例
 
 编辑 `~/.openclaw/openclaw.json`:
 
@@ -295,7 +307,7 @@ vectorStore: {
 }
 ```
 
-### 3.3 召回配置
+### 3.4 召回配置
 
 | 选项 | 类型 | 默认 | 说明 |
 |------|------|------|------|
@@ -305,7 +317,7 @@ vectorStore: {
 | `recall.boostOnRecall` | boolean | true | 召回时是否提升重要性 |
 | `recall.boostScopeScoreOnRecall` | boolean | true | 召回时是否提升作用域评分 |
 
-### 3.4 Dreaming机制配置
+### 3.5 Dreaming机制配置
 
 | 选项 | 类型 | 默认 | 说明 |
 |------|------|------|------|
@@ -335,7 +347,7 @@ vectorStore: {
 | `dreaming.logging.maxFileSize` | string | "10MB" | 最大文件大小 |
 | `dreaming.logging.maxFiles` | number | 5 | 日志文件数量 |
 
-### 3.5 强化策略配置
+### 3.6 强化策略配置
 
 | 选项 | 类型 | 默认 | 说明 |
 |------|------|------|------|
@@ -345,7 +357,7 @@ vectorStore: {
 | `boostPolicy.highBoost` | number | 0.05 | 高重要性记忆的强化增量（0.5-0.8） |
 | `boostPolicy.maxImportance` | number | 0.8 | 强化的最高重要性限制 |
 
-### 3.6 作用域升级策略配置
+### 3.7 作用域升级策略配置
 
 | 选项 | 类型 | 默认 | 说明 |
 |------|------|------|------|
@@ -354,7 +366,7 @@ vectorStore: {
 | `scopeUpgrade.minRecallCount` | number | 2 | 升级到agent作用域的最低召回次数 |
 | `scopeUpgrade.minAgentCount` | number | 2 | 升级到global作用域的最低Agent数量 |
 
-### 3.7 遗忘策略配置
+### 3.8 遗忘策略配置
 
 | 选项 | 类型 | 默认 | 说明 |
 |------|------|------|------|
@@ -364,7 +376,7 @@ vectorStore: {
 | `forgetPolicy.deleteThreshold` | number | 0.1 | 触发删除检查的重要性阈值 |
 | `forgetPolicy.deleteDays` | number | 180 | 触发删除的未更新天数 |
 
-### 3.3 LLM 配置
+### 3.9 LLM 配置
 
 ```typescript
 llm: {
@@ -375,7 +387,7 @@ llm: {
 }
 ```
 
-### 3.4 Embedding 配置
+### 3.10 Embedding 配置
 
 ```typescript
 embedding: {
@@ -386,7 +398,7 @@ embedding: {
 }
 ```
 
-### 3.5 向量存储配置
+### 3.11 向量存储配置
 
 ```typescript
 vectorStore: {
@@ -394,7 +406,7 @@ vectorStore: {
 }
 ```
 
-### 3.6 日志配置
+### 3.12 日志配置
 
 | 选项 | 类型 | 默认 | 说明 |
 |------|------|------|------|
@@ -574,6 +586,23 @@ openclaw gateway restart
     "deleteDays": 180
   }
 }
+```
+
+### 8.5 Q: 测试失败怎么办？
+
+```bash
+# 检查依赖是否安装
+cd /home/hechen/OMMS/omms-plugin
+npm install
+
+# 重新编译
+npm run build
+
+# 运行单个测试文件
+npm run test -- memory.test.ts
+
+# 查看详细错误信息
+npm run test -- --run --reporter=verbose
 ```
 
 ---

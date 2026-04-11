@@ -3,6 +3,7 @@ import { memoryService } from '../core-memory/memory.js';
 import { scorer } from '../core-memory/scorer.js';
 import type { DreamingConfig, DreamingLog, DreamingStatus, LightPhaseResult, DeepPhaseResult, RemPhaseResult, DreamingResult } from '../../types/index.js';
 import { configManager } from '../../config.js';
+import { getSessionManager } from '../session-manager.js';
 
 class DreamingService {
   private config: DreamingConfig;
@@ -11,6 +12,20 @@ class DreamingService {
   private lastRun: Date | null = null;
   private nextRun: Date | null = null;
   private scheduler: NodeJS.Timeout | null = null;
+  private sessionManager = getSessionManager();
+  private logs: DreamingLog[] = [];
+  
+  // 检查是否应该触发 dreaming 过程
+  checkSessionTrigger(): boolean {
+    if (!this.config.sessionTrigger?.enabled) {
+      return false;
+    }
+    
+    const totalSessions = this.sessionManager.getTotalSessionCount();
+    const afterSessions = this.config.sessionTrigger.afterSessions || 5;
+    
+    return totalSessions >= afterSessions;
+  }
 
   constructor(config: Partial<DreamingConfig> = {}) {
     this.config = this.mergeConfig(config);
@@ -19,11 +34,28 @@ class DreamingService {
 
   private mergeConfig(config: Partial<DreamingConfig>): DreamingConfig {
     const defaultConfig: DreamingConfig = {
-      enabled: false,
+      enabled: true,
       schedule: {
         enabled: true,
         time: "02:00",
         timezone: "Asia/Shanghai"
+      },
+      phases: {
+        light: {
+          enabled: true,
+          topK: 10,
+          minScore: 0.5
+        },
+        deep: {
+          enabled: true,
+          topK: 5,
+          minScore: 0.7
+        },
+        rem: {
+          enabled: true,
+          topK: 3,
+          minScore: 0.8
+        }
       },
       memoryThreshold: {
         enabled: true,
@@ -77,8 +109,27 @@ class DreamingService {
       isRunning: this.isRunning,
       lastRun: this.lastRun?.toISOString() || null,
       nextRun: this.nextRun?.toISOString() || null,
-      config: this.config
+      config: this.config,
+      logs: [...this.logs]
     };
+  }
+
+  getConfig(): DreamingConfig {
+    return { ...this.config };
+  }
+
+  configure(config: Partial<DreamingConfig>): void {
+    this.config = this.mergeConfig(config);
+    this.logger.info("Dreaming service configured", this.config);
+  }
+
+  getLogs(): DreamingLog[] {
+    return [...this.logs];
+  }
+
+  clearLogs(): void {
+    this.logs = [];
+    this.logger.debug("Logs cleared");
   }
 
   async start(): Promise<DreamingResult> {
@@ -177,10 +228,22 @@ class DreamingService {
 
     // 检查sessionTrigger条件
     if (this.config.sessionTrigger?.enabled) {
-      // 这里需要获取会话计数，但当前实现中没有会话管理
-      // 暂时不实现这个功能，默认返回true
-      this.logger.debug("[DREAMING] Session trigger enabled but not implemented");
-      return true;
+      const sessionStats = this.sessionManager.getStats();
+      const totalSessions = sessionStats.totalSessions;
+      const afterSessions = this.config.sessionTrigger.afterSessions || 10;
+      
+      if (totalSessions < afterSessions) {
+        this.logger.debug("[DREAMING] Session count below threshold", { 
+          totalSessions, 
+          threshold: afterSessions 
+        });
+        return false;
+      }
+      
+      this.logger.debug("[DREAMING] Session trigger condition met", { 
+        totalSessions, 
+        threshold: afterSessions 
+      });
     }
 
     return true;
@@ -189,15 +252,67 @@ class DreamingService {
   private calculateNextRunTime(): Date {
     const now = new Date();
     const [hours, minutes] = this.config.schedule?.time?.split(':').map(Number) || [2, 0];
+    const timezone = this.config.schedule?.timezone || 'UTC';
     
-    const next = new Date(now);
-    next.setHours(hours, minutes, 0, 0);
+    let next: Date;
     
-    if (next <= now) {
-      next.setDate(next.getDate() + 1);
+    if (timezone === 'UTC') {
+      next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hours, minutes, 0, 0));
+      
+      if (next <= now) {
+        next.setUTCDate(next.getUTCDate() + 1);
+      }
+    } else {
+      // 对于其他时区，我们需要考虑时区偏移
+      // 这里简化处理，假设我们使用当前时区
+      next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0);
+      
+      if (next <= now) {
+        next.setDate(next.getDate() + 1);
+      }
     }
 
+    this.logger.debug("[DREAMING] Next run time calculated", {
+      method: "calculateNextRunTime",
+      params: { hours, minutes, timezone },
+      returns: "Date",
+      data: { nextRun: next.toISOString(), now: now.toISOString() }
+    });
+
     return next;
+  }
+
+  private getTimezoneOffset(timezone: string, date: Date): number {
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hour: 'numeric',
+        minute: 'numeric',
+        second: 'numeric',
+        hour12: false
+      });
+      
+      const parts = formatter.formatToParts(date);
+      const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
+      const minute = parseInt(parts.find(p => p.type === 'minute')?.value || '0');
+      const second = parseInt(parts.find(p => p.type === 'second')?.value || '0');
+      
+      const utcHour = date.getUTCHours();
+      const tzHour = hour;
+      
+      let offset = tzHour - utcHour;
+      
+      if (offset > 12) offset -= 24;
+      if (offset < -12) offset += 24;
+      
+      return offset;
+    } catch (error) {
+      this.logger.warn("[DREAMING] Failed to calculate timezone offset, using UTC", {
+        error: String(error),
+        timezone
+      });
+      return 0;
+    }
   }
 
   private async runDreaming(): Promise<DreamingResult> {
@@ -477,7 +592,7 @@ class DreamingService {
 
   private async calculateRelevance(memory: any): Promise<number> {
     // 简化实现：使用 recall 方法代替 search
-    const searchResults = await memoryService.recall(memory.content, { limit: 5 });
+    const searchResults = await memoryService.recall({ query: memory.content, limit: 5 });
     const relevantCount = searchResults.memories.filter(m => m.recallCount > 0).length;
     
     return Math.min(relevantCount / 5, 1.0);

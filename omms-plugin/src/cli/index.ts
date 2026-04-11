@@ -89,7 +89,7 @@ async function handleSearch(config: Record<string, string>, ctx: CLIContext): Pr
     return;
   }
 
-  const result = await memoryService.recall(query, { limit: 10 });
+  const result = await memoryService.recall({ query, limit: 10 });
 
   ctx.log("\n## User Profile");
   ctx.log(result.profile || "No profile data");

@@ -48,7 +48,7 @@ export interface UserProfile {
   agentId: string;
   staticFacts: Map<string, StaticFact>;
   preferences: Map<string, PreferenceValue>;
-  recentDecisions: string[];
+  recentDecisions: ProjectDecision[];
   projects: Map<string, ProjectContext>;
   updatedAt: string;
 }
@@ -67,16 +67,22 @@ export interface PreferenceValue {
   updatedAt: string;
 }
 
+export interface ProjectDecision {
+  content: string;
+  timestamp: string;
+}
+
 export interface ProjectContext {
   name: string;
   description: string;
   techStack?: string[];
-  recentDecisions: string[];
+  recentDecisions: ProjectDecision[];
   currentGoals: string[];
 }
 
 export interface GraphNode {
   id: string;
+  label: string;
   name: string;
   type: "entity" | "concept";
   aliases: string[];
@@ -92,6 +98,7 @@ export interface GraphEdge {
   id: string;
   source: string;
   target: string;
+  relation: RelationshipType;
   type: RelationshipType;
   weight: number;
   evidence: string[];
@@ -111,7 +118,7 @@ export interface RecallResult {
   memories: Memory[];
   relations?: {
     nodes: GraphNode[];
-    paths: GraphEdge[][];
+    paths: GraphEdge[];
   };
   boosted?: number;
 }
@@ -129,6 +136,37 @@ export interface MemoryStats {
   avgScopeScore: number;
   oldestMemory?: string;
   newestMemory?: string;
+}
+
+export interface MemoryInput {
+  content: string;
+  type: MemoryType;
+  importance?: number;
+  scope?: MemoryScope;
+  agentId?: string;
+  subject?: string;
+  sessionId?: string;
+  metadata?: Record<string, unknown>;
+  confidence?: number;
+  explicit?: boolean;
+  relatedCount?: number;
+  sessionLength?: number;
+  turnCount?: number;
+}
+
+export interface RecallOptions {
+  query: string;
+  agentId?: string;
+  subject?: string;
+  sessionId?: string;
+  scope?: MemoryScope | "all";
+  types?: MemoryType[];
+  tags?: string[];
+  limit?: number;
+  minImportance?: number;
+  maxAge?: number;
+  boostOnRecall?: boolean;
+  isAutoRecall?: boolean;
 }
 
 export interface ScoreInput {
@@ -170,6 +208,8 @@ export interface EmbeddingConfig {
   dimensions: number;
   baseURL: string;
   apiKey: string;
+  maxCacheSize?: number;
+  maxTextLength?: number;
 }
 
 export interface LLMConfig {
@@ -177,12 +217,35 @@ export interface LLMConfig {
   model: string;
   baseURL: string;
   apiKey: string;
+  maxTextLength?: number;
+  maxTokens?: number;
+  temperature?: number;
+  topP?: number;
+  timeout?: number;
+  maxRetries?: number;
+}
+
+export interface EmbeddingConfig {
+  model: string;
+  dimensions: number;
+  baseURL: string;
+  apiKey: string;
+  maxCacheSize?: number;
+  maxTextLength?: number;
+  batchSize?: number;
+  timeout?: number;
+  maxRetries?: number;
 }
 
 export interface VectorStoreConfig {
   type: "lancedb" | "memory";
   dbPath?: string;
   vectorDimensionMismatch?: "warn" | "rebuild" | "use-existing";
+  defaultDimensions?: number;
+  indexConfig?: {
+    numPartitions?: number;
+    numSubVectors?: number;
+  };
 }
 
 export interface SearchConfig {
@@ -218,6 +281,23 @@ export interface DreamingConfig {
       recency?: number;
       consolidation?: number;
       conceptualRichness?: number;
+    };
+  };
+  phases?: {
+    light?: {
+      enabled?: boolean;
+      topK?: number;
+      minScore?: number;
+    };
+    deep?: {
+      enabled?: boolean;
+      topK?: number;
+      minScore?: number;
+    };
+    rem?: {
+      enabled?: boolean;
+      topK?: number;
+      minScore?: number;
     };
   };
   output?: {
@@ -320,6 +400,14 @@ export interface DreamingStatus {
   lastRun: string | null;
   nextRun: string | null;
   config: DreamingConfig;
+  logs: DreamingLog[];
+}
+
+export interface LoggerConfig {
+  level?: 'debug' | 'info' | 'warn' | 'error';
+  output?: "console" | "file" | "both";
+  filePath?: string;
+  maxCacheSize?: number;
 }
 
 export interface OMMSConfig {
@@ -328,7 +416,7 @@ export interface OMMSConfig {
   enableLLMExtraction?: boolean;
   enableGraphEngine?: boolean;
   enableProfile?: boolean;
-  enableSessionSummary?: boolean; // 预留字段，用于会话摘要功能
+  enableSessionSummary?: boolean;
   enableVectorSearch?: boolean;
   maxMemoriesPerSession?: number;
   autoArchiveThreshold?: number;
@@ -338,11 +426,7 @@ export interface OMMSConfig {
   llm?: LLMConfig;
   vectorStore?: VectorStoreConfig;
   search?: SearchConfig;
-  logging?: {
-    level?: "debug" | "info" | "warn" | "error";
-    output?: "console" | "file" | "both";
-    filePath?: string;
-  };
+  logging?: LoggerConfig;
   scopeUpgrade?: {
     agentThreshold?: number;
     globalThreshold?: number;
@@ -362,6 +446,12 @@ export interface OMMSConfig {
     mediumBoost?: number;
     highBoost?: number;
     maxImportance?: number;
+    thresholds?: {
+      highImportance?: number;
+      mediumImportance?: number;
+      lowImportance?: number;
+      defaultBoost?: number;
+    };
   };
   recall?: {
     autoRecallLimit?: number;

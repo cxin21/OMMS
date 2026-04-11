@@ -387,10 +387,17 @@ export class Scorer {
     similarity: number
   ): number {
     const rc = this.config.recall!;
+    console.log('Calculating recall priority for:', memory.content);
+    console.log('  similarity:', similarity);
+    console.log('  importance:', memory.importance);
+    
     let priority = similarity * memory.importance;
+    console.log('  initial priority:', priority);
 
     const isOwner = memory.ownerAgentId === currentAgentId;
     const isCurrentAgent = memory.agentId === currentAgentId;
+    console.log('  isOwner:', isOwner);
+    console.log('  isCurrentAgent:', isCurrentAgent);
 
     let scopeWeight: number;
     if (isOwner) {

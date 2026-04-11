@@ -36,17 +36,26 @@ export const DEFAULT_OMMS_CONFIG: OMMSConfig = {
     model: "text-embedding-3-small",
     dimensions: 1536,
     baseURL: "https://api.openai.com/v1",
-    apiKey: ""
+    apiKey: "",
+    maxCacheSize: 10000,
+    maxTextLength: 8000
   },
   llm: {
     provider: "openai-compatible",
     model: "abab6.5s-chat",
     baseURL: "https://api.minimax.chat",
-    apiKey: ""
+    apiKey: "",
+    maxTextLength: 4000,
+    maxTokens: 1000
   },
   vectorStore: {
     type: "lancedb",
-    vectorDimensionMismatch: "warn"
+    vectorDimensionMismatch: "warn",
+    defaultDimensions: 1024,
+    indexConfig: {
+      numPartitions: 128,
+      numSubVectors: 96
+    }
   },
   search: {
     vectorWeight: 0.7,
@@ -56,7 +65,8 @@ export const DEFAULT_OMMS_CONFIG: OMMSConfig = {
   logging: {
     level: "info",
     output: "console",
-    filePath: ""
+    filePath: "",
+    maxCacheSize: 1000
   },
   scopeUpgrade: {
     agentThreshold: 0.6,
@@ -76,12 +86,18 @@ export const DEFAULT_OMMS_CONFIG: OMMSConfig = {
     lowBoost: 0.1,
     mediumBoost: 0.3,
     highBoost: 0.5,
-    maxImportance: 1.0
+    maxImportance: 1.0,
+    thresholds: {
+      highImportance: 0.8,
+      mediumImportance: 0.5,
+      lowImportance: 0.3,
+      defaultBoost: 0.1
+    }
   },
   recall: {
     autoRecallLimit: 5,
     manualRecallLimit: 10,
-    minSimilarity: 0.6,
+    minSimilarity: 0.1,
     boostOnRecall: true,
     boostScopeScoreOnRecall: true
   },

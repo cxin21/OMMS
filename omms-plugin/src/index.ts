@@ -195,7 +195,7 @@ export default definePluginEntry({
           const recallLogger = getLogger();
           recallLogger.debug("memory_recall called via plugin", { query: params.query, limit: params.limit });
 
-          const result = await memoryService.recall(params.query, { limit: params.limit });
+          const result = await memoryService.recall({ query: params.query, limit: params.limit });
           const lines: string[] = [];
 
           if (result.profile) {
@@ -358,7 +358,8 @@ export default definePluginEntry({
           }
         });
 
-        const result = await memoryService.recall(lastUserMessage, {
+        const result = await memoryService.recall({
+          query: lastUserMessage,
           agentId: event.agentId,
           isAutoRecall: true,
         });

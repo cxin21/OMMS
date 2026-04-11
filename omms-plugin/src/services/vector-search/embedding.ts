@@ -1,21 +1,17 @@
 import { getLogger } from "../logging/logger.js";
-
-export interface EmbeddingConfig {
-  model: string;
-  dimensions: number;
-  baseURL: string;
-  apiKey: string;
-}
+import type { EmbeddingConfig } from "../../types/index.js";
 
 export class EmbeddingService {
   private config: EmbeddingConfig;
   private cache = new Map<string, number[]>();
   private logger = getLogger();
-  private actualDimensions: number | null = null; // 实际API返回的维度
+  private actualDimensions: number | null = null;
+  private maxCacheSize: number;
 
   constructor(config: EmbeddingConfig) {
     this.config = config;
-    this.logger.info("Embedding service created", { model: config.model, configuredDimensions: config.dimensions });
+    this.maxCacheSize = config.maxCacheSize || 10000;
+    this.logger.info("Embedding service created", { model: config.model, configuredDimensions: config.dimensions, maxCacheSize: this.maxCacheSize });
   }
 
   async initialize(): Promise<void> {
@@ -80,8 +76,8 @@ export class EmbeddingService {
       }
     }
 
-    if (this.cache.size > 10000) {
-      const keys = [...this.cache.keys()].slice(0, 5000);
+    if (this.cache.size > this.maxCacheSize) {
+      const keys = [...this.cache.keys()].slice(0, Math.floor(this.maxCacheSize / 2));
       keys.forEach((k) => this.cache.delete(k));
       this.logger.debug("Cache pruned", { removed: keys.length, remaining: this.cache.size });
     }
@@ -119,8 +115,8 @@ export class EmbeddingService {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: model,
-        input: text.slice(0, 8000),
+        model,
+        input: text.slice(0, this.config.maxTextLength || 8000),
       }),
     });
 

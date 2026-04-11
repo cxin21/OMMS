@@ -21,23 +21,23 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
   error: 3,
 };
 
-export interface LoggerConfig {
-  level?: LogLevel;
-  output?: "console" | "file" | "both";
-  filePath?: string;
-}
+import type { LoggerConfig } from "../../types/index.js";
 
 export class Logger {
   private level: LogLevel = "info";
   private logOutput: "console" | "file" | "both" = "console";
   private filePath?: string;
   private logs: LogEntry[] = [];
+  private maxCacheSize: number;
 
   constructor(config?: LoggerConfig) {
     if (config) {
       this.level = config.level || "info";
       this.logOutput = config.output || "console";
       this.filePath = config.filePath;
+      this.maxCacheSize = config.maxCacheSize || 1000;
+    } else {
+      this.maxCacheSize = 1000;
     }
   }
 
@@ -91,7 +91,7 @@ export class Logger {
     };
 
     this.logs.push(entry);
-    if (this.logs.length > 1000) {
+    if (this.logs.length > this.maxCacheSize) {
       this.logs.shift();
     }
 

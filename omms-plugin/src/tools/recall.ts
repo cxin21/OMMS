@@ -16,7 +16,8 @@ export const ommsRecallTool = {
 
   async execute(_id: string, params: { query: string; scope?: string; limit?: number; include_profile?: boolean }) {
     try {
-      const result = await memoryService.recall(params.query, {
+      const result = await memoryService.recall({
+        query: params.query,
         scope: params.scope as any || "all",
         limit: params.limit,
       });

@@ -1,6 +1,8 @@
 import type { Memory, UserProfile, StaticFact, PreferenceValue, ProjectContext, MemoryType } from "../../types/index.js";
+import { getLogger } from "../logging/logger.js";
 
 export class ProfileEngine {
+  private logger = getLogger();
   build(memories: Memory[], agentId: string): UserProfile {
     const profile: UserProfile = {
       id: `profile_${agentId}`,
@@ -25,7 +27,10 @@ export class ProfileEngine {
           break;
 
         case "decision":
-          profile.recentDecisions.push(memory.content);
+          profile.recentDecisions.push({
+            content: memory.content,
+            timestamp: memory.createdAt
+          });
           this.updateProject(profile, memory);
           break;
       }
@@ -98,7 +103,7 @@ export class ProfileEngine {
     if (profile.recentDecisions.length > 0) {
       const recent = profile.recentDecisions.slice(-3);
       parts.push("**Recent Decisions:**");
-      recent.forEach((d) => parts.push(`- ${d.slice(0, 100)}`));
+      recent.forEach((d) => parts.push(`- ${d.content.slice(0, 100)}`));
     }
 
     return parts.join("\n");
@@ -108,12 +113,25 @@ export class ProfileEngine {
     const key = this.extractSubject(memory.content);
     const existing = profile.staticFacts.get(key);
 
+    this.logger.debug("Adding static fact to profile", {
+      method: "addStaticFact",
+      params: { profileId: profile.id, memoryId: memory.id, key },
+      data: { existing: !!existing, importance: memory.importance }
+    });
+
     if (!existing || memory.importance > existing.confidence) {
       profile.staticFacts.set(key, {
         content: memory.content,
         confidence: memory.importance,
         source: memory.sessionId || "unknown",
         updatedAt: memory.createdAt,
+      });
+
+      this.logger.debug("Static fact added/updated", {
+        method: "addStaticFact",
+        params: { profileId: profile.id, key },
+        returns: "void",
+        data: { content: memory.content, confidence: memory.importance }
       });
     }
   }
@@ -122,6 +140,12 @@ export class ProfileEngine {
     const key = this.extractSubject(memory.content);
     const existing = profile.preferences.get(key);
 
+    this.logger.debug("Adding preference to profile", {
+      method: "addPreference",
+      params: { profileId: profile.id, memoryId: memory.id, key },
+      data: { existing: !!existing, importance: memory.importance }
+    });
+
     if (!existing) {
       profile.preferences.set(key, {
         content: memory.content,
@@ -129,9 +153,23 @@ export class ProfileEngine {
         examples: [memory.content],
         updatedAt: memory.createdAt,
       });
+
+      this.logger.debug("New preference added", {
+        method: "addPreference",
+        params: { profileId: profile.id, key },
+        returns: "void",
+        data: { content: memory.content, weight: memory.importance }
+      });
     } else {
       existing.examples.push(memory.content);
       existing.weight = Math.min(existing.weight + 0.05, 1.0);
+
+      this.logger.debug("Preference weight updated", {
+        method: "addPreference",
+        params: { profileId: profile.id, key },
+        returns: "void",
+        data: { newWeight: existing.weight, examplesCount: existing.examples.length }
+      });
       existing.updatedAt = memory.createdAt;
     }
   }
@@ -140,6 +178,12 @@ export class ProfileEngine {
     const projectName = this.detectProject(memory.content);
     if (!projectName) return;
 
+    this.logger.debug("Updating project in profile", {
+      method: "updateProject",
+      params: { profileId: profile.id, memoryId: memory.id, projectName },
+      data: { memoryType: memory.type }
+    });
+
     if (!profile.projects.has(projectName)) {
       profile.projects.set(projectName, {
         name: projectName,
@@ -147,10 +191,32 @@ export class ProfileEngine {
         recentDecisions: [],
         currentGoals: [],
       });
+
+      this.logger.debug("New project created", {
+        method: "updateProject",
+        params: { profileId: profile.id, projectName },
+        returns: "void",
+        data: { projectCreated: true }
+      });
     }
 
     const project = profile.projects.get(projectName)!;
-    project.recentDecisions.push(memory.content);
+    if (memory.type === "decision") {
+      project.recentDecisions.unshift({
+        content: memory.content,
+        timestamp: memory.createdAt,
+      });
+      if (project.recentDecisions.length > 10) {
+        project.recentDecisions.pop();
+      }
+
+      this.logger.debug("Project decision added", {
+        method: "updateProject",
+        params: { profileId: profile.id, projectName },
+        returns: "void",
+        data: { decisionCount: project.recentDecisions.length }
+      });
+    }
 
     if (memory.tags.includes("goal")) {
       project.currentGoals.push(memory.content);
