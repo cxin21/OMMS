@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent/relation/room_default/closet_memory_01KP4MW9S3V782J6G6Y7C3P7W58472_v1",
+  "content": "我搬家了，现在住在海淀区 | 海淀区是北京的教育和科技中心，很多高校和科技公司都在那里。",
+  "metadata": {
+    "uid": "memory_01KP4MW9S3V782J6G6Y7C3P7W58472",
+    "version": 1,
+    "createdAt": 1776125093667,
+    "updatedAt": 1776125093667,
+    "originalSize": 44,
+    "compressed": false,
+    "encrypted": false
+  }
+}

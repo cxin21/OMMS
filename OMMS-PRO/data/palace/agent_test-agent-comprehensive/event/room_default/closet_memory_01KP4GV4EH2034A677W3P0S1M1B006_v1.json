@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/event/room_default/closet_memory_01KP4GV4EH2034A677W3P0S1M1B006_v1",
+  "content": "项目deadline是下周五",
+  "metadata": {
+    "uid": "memory_01KP4GV4EH2034A677W3P0S1M1B006",
+    "version": 1,
+    "createdAt": 1776120861146,
+    "updatedAt": 1776120861146,
+    "originalSize": 14,
+    "compressed": false,
+    "encrypted": false
+  }
+}

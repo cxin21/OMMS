@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/event/room_default/closet_memory_01KP4GTQ5RT7V256F0359683Z3V4Q2_v1",
+  "content": "等会儿我要开会",
+  "metadata": {
+    "uid": "memory_01KP4GTQ5RT7V256F0359683Z3V4Q2",
+    "version": 1,
+    "createdAt": 1776120847550,
+    "updatedAt": 1776120847550,
+    "originalSize": 7,
+    "compressed": false,
+    "encrypted": false
+  }
+}

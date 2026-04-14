@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/event/room_default/closet_memory_01KP4GTPJKR4V487S0P191G1F0K691_v1",
+  "content": "帮我倒杯咖啡",
+  "metadata": {
+    "uid": "memory_01KP4GTPJKR4V487S0P191G1F0K691",
+    "version": 1,
+    "createdAt": 1776120846938,
+    "updatedAt": 1776120846938,
+    "originalSize": 6,
+    "compressed": false,
+    "encrypted": false
+  }
+}

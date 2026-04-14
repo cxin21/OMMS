@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/preference/room_default/closet_memory_01KP4GTZZ8M0T1A26727Z5E086Q2D2_v1",
+  "content": "我讨厌开会",
+  "metadata": {
+    "uid": "memory_01KP4GTZZ8M0T1A26727Z5E086Q2D2",
+    "version": 1,
+    "createdAt": 1776120856567,
+    "updatedAt": 1776120856567,
+    "originalSize": 5,
+    "compressed": false,
+    "encrypted": false
+  }
+}

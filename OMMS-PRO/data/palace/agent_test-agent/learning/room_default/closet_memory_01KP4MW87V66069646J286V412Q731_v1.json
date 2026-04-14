@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent/learning/room_default/closet_memory_01KP4MW87V66069646J286V412Q731_v1",
+  "content": "我正在读《代码大全》这本书，学到了很多编程最佳实践 | 《代码大全》是软件工程的经典之作！好好消化书中的内容会对你的编程能力有很大提升。",
+  "metadata": {
+    "uid": "memory_01KP4MW87V66069646J286V412Q731",
+    "version": 1,
+    "createdAt": 1776125092091,
+    "updatedAt": 1776125092091,
+    "originalSize": 68,
+    "compressed": false,
+    "encrypted": false
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent/fact/room_default/closet_memory_01KP4MW6T5J322E70605X6X2220193_v1",
+  "content": "我主要使用Python和TypeScript开发，特别喜欢React框架 | Python和TypeScript是很棒的技术栈！React也是目前最流行的前端框架之一。",
+  "metadata": {
+    "uid": "memory_01KP4MW6T5J322E70605X6X2220193",
+    "version": 1,
+    "createdAt": 1776125090629,
+    "updatedAt": 1776125090629,
+    "originalSize": 84,
+    "compressed": false,
+    "encrypted": false
+  }
+}

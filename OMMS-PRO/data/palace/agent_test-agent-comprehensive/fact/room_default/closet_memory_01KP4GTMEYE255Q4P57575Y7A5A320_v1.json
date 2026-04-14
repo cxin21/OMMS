@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/fact/room_default/closet_memory_01KP4GTMEYE255Q4P57575Y7A5A320_v1",
+  "content": "今天天气真好",
+  "metadata": {
+    "uid": "memory_01KP4GTMEYE255Q4P57575Y7A5A320",
+    "version": 1,
+    "createdAt": 1776120844793,
+    "updatedAt": 1776120844793,
+    "originalSize": 6,
+    "compressed": false,
+    "encrypted": false
+  }
+}

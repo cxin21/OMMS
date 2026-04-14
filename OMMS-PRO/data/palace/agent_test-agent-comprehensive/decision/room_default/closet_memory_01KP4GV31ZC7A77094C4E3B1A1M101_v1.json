@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/decision/room_default/closet_memory_01KP4GV31ZC7A77094C4E3B1A1M101_v1",
+  "content": "我决定每天早上跑步",
+  "metadata": {
+    "uid": "memory_01KP4GV31ZC7A77094C4E3B1A1M101",
+    "version": 1,
+    "createdAt": 1776120859729,
+    "updatedAt": 1776120859729,
+    "originalSize": 9,
+    "compressed": false,
+    "encrypted": false
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/identity/room_default/closet_memory_01KP4GTRRZ16W320Q5W4S0D2W0S793_v1",
+  "content": "我是公司的产品经理",
+  "metadata": {
+    "uid": "memory_01KP4GTRRZ16W320Q5W4S0D2W0S793",
+    "version": 1,
+    "createdAt": 1776120849193,
+    "updatedAt": 1776120849193,
+    "originalSize": 9,
+    "compressed": false,
+    "encrypted": false
+  }
+}

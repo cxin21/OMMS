@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/preference/room_default/closet_memory_01KP4GTNZ02227F014T236P6J637A2_v1",
+  "content": "我想喝水",
+  "metadata": {
+    "uid": "memory_01KP4GTNZ02227F014T236P6J637A2",
+    "version": 1,
+    "createdAt": 1776120846312,
+    "updatedAt": 1776120846312,
+    "originalSize": 4,
+    "compressed": false,
+    "encrypted": false
+  }
+}

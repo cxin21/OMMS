@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/fact/room_default/closet_memory_01KP4GTT8KF1P735J6J472N2Z072Z3_v1",
+  "content": "我养了一只猫叫旺财",
+  "metadata": {
+    "uid": "memory_01KP4GTT8KF1P735J6J472N2Z072Z3",
+    "version": 1,
+    "createdAt": 1776120850714,
+    "updatedAt": 1776120850714,
+    "originalSize": 9,
+    "compressed": false,
+    "encrypted": false
+  }
+}

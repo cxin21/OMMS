@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/identity/room_default/closet_memory_01KP4GTV4GG6N1Q340H1M3J5R6M7R7_v1",
+  "content": "我的工号是12345",
+  "metadata": {
+    "uid": "memory_01KP4GTV4GG6N1Q340H1M3J5R6M7R7",
+    "version": 1,
+    "createdAt": 1776120851608,
+    "updatedAt": 1776120851608,
+    "originalSize": 10,
+    "compressed": false,
+    "encrypted": false
+  }
+}

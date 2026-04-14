@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/preference/room_default/closet_memory_01KP4GTQV9M4S5S1B190V425R786F1_v1",
+  "content": "记住我最喜欢的颜色是蓝色",
+  "metadata": {
+    "uid": "memory_01KP4GTQV9M4S5S1B190V425R786F1",
+    "version": 1,
+    "createdAt": 1776120848247,
+    "updatedAt": 1776120848247,
+    "originalSize": 12,
+    "compressed": false,
+    "encrypted": false
+  }
+}

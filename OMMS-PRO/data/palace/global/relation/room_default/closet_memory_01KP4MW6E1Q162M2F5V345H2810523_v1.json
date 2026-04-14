@@ -1,0 +1,13 @@
+{
+  "palaceRef": "global/relation/room_default/closet_memory_01KP4MW6E1Q162M2F5V345H2810523_v1",
+  "content": "我叫张三，是一名软件工程师，今年25岁，住在北京朝阳区 | 你好张三！很高兴认识你。软件工程师是个很有前景的职业，北京也是科技发展的热门城市。",
+  "metadata": {
+    "uid": "memory_01KP4MW6E1Q162M2F5V345H2810523",
+    "version": 1,
+    "createdAt": 1776125090241,
+    "updatedAt": 1776125090241,
+    "originalSize": 71,
+    "compressed": false,
+    "encrypted": false
+  }
+}

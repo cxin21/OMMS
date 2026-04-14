@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/event/room_default/closet_memory_01KP4GY7FYN4K647B2C2M0C1T581A7_v1",
+  "content": "今天画了一幅风景画",
+  "metadata": {
+    "uid": "memory_01KP4GY7FYN4K647B2C2M0C1T581A7",
+    "version": 1,
+    "createdAt": 1776120962558,
+    "updatedAt": 1776120962558,
+    "originalSize": 9,
+    "compressed": false,
+    "encrypted": false
+  }
+}

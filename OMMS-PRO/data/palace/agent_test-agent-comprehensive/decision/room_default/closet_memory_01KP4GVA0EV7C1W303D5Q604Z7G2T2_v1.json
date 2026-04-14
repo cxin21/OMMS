@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/decision/room_default/closet_memory_01KP4GVA0EV7C1W303D5Q604Z7G2T2_v1",
+  "content": "我想买一架好的钢琴",
+  "metadata": {
+    "uid": "memory_01KP4GVA0EV7C1W303D5Q604Z7G2T2",
+    "version": 1,
+    "createdAt": 1776120866854,
+    "updatedAt": 1776120866854,
+    "originalSize": 9,
+    "compressed": false,
+    "encrypted": false
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/relation/room_default/closet_memory_01KP4GTYSDK5V0S272E5X2Z311H3F0_v1",
+  "content": "我的领导是张总",
+  "metadata": {
+    "uid": "memory_01KP4GTYSDK5V0S272E5X2Z311H3F0",
+    "version": 1,
+    "createdAt": 1776120855348,
+    "updatedAt": 1776120855348,
+    "originalSize": 7,
+    "compressed": false,
+    "encrypted": false
+  }
+}

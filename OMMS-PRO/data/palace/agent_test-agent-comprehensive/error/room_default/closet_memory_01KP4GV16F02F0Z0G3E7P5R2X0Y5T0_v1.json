@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/error/room_default/closet_memory_01KP4GV16F02F0Z0G3E7P5R2X0Y5T0_v1",
+  "content": "bug报告登录页面500错误",
+  "metadata": {
+    "uid": "memory_01KP4GV16F02F0Z0G3E7P5R2X0Y5T0",
+    "version": 1,
+    "createdAt": 1776120857819,
+    "updatedAt": 1776120857819,
+    "originalSize": 14,
+    "compressed": false,
+    "encrypted": false
+  }
+}

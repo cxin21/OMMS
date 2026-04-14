@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/event/room_default/closet_memory_01KP4GVMDD95T6944631V0H5R6S012_v1",
+  "content": "邮箱更新了",
+  "metadata": {
+    "uid": "memory_01KP4GVMDD95T6944631V0H5R6S012",
+    "version": 1,
+    "createdAt": 1776120877532,
+    "updatedAt": 1776120877532,
+    "originalSize": 5,
+    "compressed": false,
+    "encrypted": false
+  }
+}

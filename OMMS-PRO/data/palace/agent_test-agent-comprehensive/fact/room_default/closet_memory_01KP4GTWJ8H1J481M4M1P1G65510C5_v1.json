@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/fact/room_default/closet_memory_01KP4GTWJ8H1J481M4M1P1G65510C5_v1",
+  "content": "公司的使命是让AI改变世界",
+  "metadata": {
+    "uid": "memory_01KP4GTWJ8H1J481M4M1P1G65510C5",
+    "version": 1,
+    "createdAt": 1776120853073,
+    "updatedAt": 1776120853073,
+    "originalSize": 13,
+    "compressed": false,
+    "encrypted": false
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "palaceRef": "global/fact/room_default/closet_memory_01KP57DC23Y0265141Z0A0F5D29327_v1",
+  "content": "用户反馈登录页面加载速度太慢，需要优化前端资源加载",
+  "metadata": {
+    "uid": "memory_01KP57DC23Y0265141Z0A0F5D29327",
+    "version": 1,
+    "createdAt": 1776144527427,
+    "updatedAt": 1776144527427,
+    "originalSize": 25,
+    "compressed": false,
+    "encrypted": false
+  }
+}

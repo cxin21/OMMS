@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/fact/room_default/closet_mem_01KP4GTN4624F6H48530W7T480Y0P5_v2",
+  "content": "今天天气真好啊",
+  "metadata": {
+    "uid": "mem_01KP4GTN4624F6H48530W7T480Y0P5",
+    "version": 2,
+    "createdAt": 1776120845350,
+    "updatedAt": 1776120845350,
+    "originalSize": 7,
+    "compressed": false,
+    "encrypted": false
+  }
+}

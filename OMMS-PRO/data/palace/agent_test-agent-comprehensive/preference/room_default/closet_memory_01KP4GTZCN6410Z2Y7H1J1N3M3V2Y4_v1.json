@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/preference/room_default/closet_memory_01KP4GTZCN6410Z2Y7H1J1N3M3V2Y4_v1",
+  "content": "我经常使用TypeScript进行开发",
+  "metadata": {
+    "uid": "memory_01KP4GTZCN6410Z2Y7H1J1N3M3V2Y4",
+    "version": 1,
+    "createdAt": 1776120855967,
+    "updatedAt": 1776120855967,
+    "originalSize": 19,
+    "compressed": false,
+    "encrypted": false
+  }
+}

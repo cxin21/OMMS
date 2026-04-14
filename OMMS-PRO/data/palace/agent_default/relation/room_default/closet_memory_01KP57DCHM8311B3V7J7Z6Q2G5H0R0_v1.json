@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_default/relation/room_default/closet_memory_01KP57DCHM8311B3V7J7Z6Q2G5H0R0_v1",
+  "content": "用户张三和李四都是前端开发工程师，他们经常一起讨论技术问题",
+  "metadata": {
+    "uid": "memory_01KP57DCHM8311B3V7J7Z6Q2G5H0R0",
+    "version": 1,
+    "createdAt": 1776144527925,
+    "updatedAt": 1776144527925,
+    "originalSize": 29,
+    "compressed": false,
+    "encrypted": false
+  }
+}

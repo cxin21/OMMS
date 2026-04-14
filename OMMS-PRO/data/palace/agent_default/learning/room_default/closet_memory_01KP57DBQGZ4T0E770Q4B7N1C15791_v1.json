@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_default/learning/room_default/closet_memory_01KP57DBQGZ4T0E770Q4B7N1C15791_v1",
+  "content": "今天学习了 TypeScript 的泛型用法，泛型可以让函数和类更加灵活可复用",
+  "metadata": {
+    "uid": "memory_01KP57DBQGZ4T0E770Q4B7N1C15791",
+    "version": 1,
+    "createdAt": 1776144527089,
+    "updatedAt": 1776144527089,
+    "originalSize": 39,
+    "compressed": false,
+    "encrypted": false
+  }
+}

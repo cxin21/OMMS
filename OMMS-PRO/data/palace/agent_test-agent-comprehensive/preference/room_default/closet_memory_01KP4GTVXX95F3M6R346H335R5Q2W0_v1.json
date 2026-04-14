@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/preference/room_default/closet_memory_01KP4GTVXX95F3M6R346H335R5Q2W0_v1",
+  "content": "我通常早上9点上班",
+  "metadata": {
+    "uid": "memory_01KP4GTVXX95F3M6R346H335R5Q2W0",
+    "version": 1,
+    "createdAt": 1776120852421,
+    "updatedAt": 1776120852421,
+    "originalSize": 9,
+    "compressed": false,
+    "encrypted": false
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/event/room_default/closet_memory_01KP4GV6XME4C62627F4M0V6G1F3H6_v1",
+  "content": "钢琴老师说我很有天赋",
+  "metadata": {
+    "uid": "memory_01KP4GV6XME4C62627F4M0V6G1F3H6",
+    "version": 1,
+    "createdAt": 1776120863681,
+    "updatedAt": 1776120863681,
+    "originalSize": 10,
+    "compressed": false,
+    "encrypted": false
+  }
+}

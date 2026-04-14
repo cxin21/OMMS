@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent/relation/room_default/closet_memory_01KP4MW8CH40N7F4G0E501P7W282S1_v1",
+  "content": "我和同事李四合作开发一个开源项目 | 开源项目是很好的学习方式！和李四合作开发什么项目呢？",
+  "metadata": {
+    "uid": "memory_01KP4MW8CH40N7F4G0E501P7W282S1",
+    "version": 1,
+    "createdAt": 1776125092241,
+    "updatedAt": 1776125092241,
+    "originalSize": 45,
+    "compressed": false,
+    "encrypted": false
+  }
+}

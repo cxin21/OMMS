@@ -1,0 +1,192 @@
+{
+  "agentId": "default-agent",
+
+  "capture": {
+    "confidenceThreshold": 0.5,
+    "maxVersions": 5,
+    "enableAutoExtraction": false,
+    "extractionTimeout": 30000
+  },
+
+  "llmExtraction": {
+    "provider": "openai-compatible",
+            "model": "Doubao-Seed-2.0-pro",
+            "baseURL": "https://ark.cn-beijing.volces.com/api/coding/v3",
+            "apiKey": "42224dcd-965d-4505-94eb-c83779985d63",
+    "temperature": 0.7,
+    "maxTokens": 2000,
+    "timeout": 30000
+  },
+
+  "api": {
+    "enabled": true,
+    "port": 3000,
+    "host": "0.0.0.0",
+    "server": {
+      "timeout": 30000
+    },
+    "cors": {
+      "enabled": true,
+      "origin": "*"
+    },
+    "logging": {
+      "level": "debug",
+      "enableRequestLogging": true,
+      "enableResponseLogging": false,
+      "enableFileLogging": false,
+      "logFilePath": "./logs/api.log"
+    },
+    "auth": {
+      "enabled": false,
+      "apiKeys": []
+    },
+    "security": {
+      "enableAuth": false,
+      "rateLimit": {
+        "enabled": false,
+        "requestsPerMinute": 60,
+        "windowMs": 60000,
+        "maxRequests": 100
+      }
+    },
+    "performance": {
+      "enableCompression": true,
+      "maxRequestBodySize": "10mb"
+    }
+  },
+
+  "mcp": {
+    "server": {
+      "transport": "stdio"
+    },
+    "tools": {
+      "enableLogging": true,
+      "timeout": 30000,
+      "maxResults": 100
+    },
+    "logging": {
+      "level": "debug",
+      "enableToolLogging": true,
+      "enableResourceLogging": false
+    },
+    "performance": {
+      "enableCache": true,
+      "cacheTTL": 300000,
+      "maxConcurrentTools": 10
+    }
+  },
+
+  "logging": {
+    "level": "debug",
+    "output": "file",
+    "filePath": "./logs/omms.log",
+    "maxSize": 10485760,
+    "maxFiles": 5
+  },
+
+  "memoryService": {
+    "enabled": true,
+    "agentId": "default",
+    "store": {
+      "autoExtract": false,
+      "autoChunk": true,
+      "autoEnrich": true,
+      "chunkThreshold": 500,
+      "defaultType": "event"
+    },
+    "recall": {
+      "defaultLimit": 20,
+      "maxLimit": 100,
+      "minScore": 0.5,
+      "enableVectorSearch": true,
+      "enableKeywordSearch": true,
+      "vectorWeight": 0.7,
+      "keywordWeight": 0.3
+    },
+    "forget": {
+      "enabled": true,
+      "checkInterval": 86400000,
+      "archiveThreshold": 3,
+      "deleteThreshold": 1,
+      "maxInactiveDays": 90,
+      "scoringWeights": {
+        "importanceWeight": 0.5,
+        "accessCountWeight": 0.3,
+        "recencyWeight": 0.2,
+        "accessCountNormalizer": 10
+      }
+    },
+    "reinforce": {
+      "enabled": true,
+      "accessWeight": 0.6,
+      "recencyWeight": 0.4,
+      "upgradeThreshold": 7,
+      "scoringConfig": {
+        "accessCountNormalizer": 10,
+        "recencyNormalizer": 86400000,
+        "maxBoostScore": 2
+      },
+      "scopeUpgrade": {
+        "globalImportanceThreshold": 8,
+        "agentImportanceThreshold": 5
+      }
+    },
+    "cache": {
+      "enabled": true,
+      "maxSize": 1000,
+      "ttl": 3600000
+    },
+    "logging": {
+      "enabled": true,
+      "level": "info"
+    }
+  },
+
+  "embedding": {
+    "model": "BAAI/bge-m3",
+            "dimensions": 1024,
+            "baseURL": "https://api.siliconflow.cn/v1",
+            "apiKey": "sk-byrxcjzctlqiebqlwesactahbfuruioxegovgeswqzbpxyar",
+    "batchSize": 32,
+    "timeout": 30000
+  },
+
+  "dreamingEngine": {
+    "scheduler": {
+      "autoOrganize": true,
+      "organizeInterval": 21600000,
+      "memoryThreshold": 1000,
+      "fragmentationThreshold": 0.3,
+      "stalenessDays": 30,
+      "maxMemoriesPerCycle": 100,
+      "maxRelationsPerCycle": 50
+    },
+    "consolidation": {
+      "similarityThreshold": 0.85,
+      "maxGroupSize": 5,
+      "preserveNewest": true,
+      "createNewVersion": true
+    },
+    "reorganization": {
+      "minEdgeWeight": 0.3,
+      "densityTarget": 0.5,
+      "orphanThreshold": 0.2,
+      "maxNewRelationsPerCycle": 30
+    },
+    "archival": {
+      "importanceThreshold": 2,
+      "stalenessDays": 30,
+      "archiveBlock": "archived",
+      "retentionDays": 90
+    },
+    "defragmentation": {
+      "fragmentationThreshold": 0.3,
+      "enableCompression": true
+    },
+    "themeExtraction": {
+      "minThemeStrength": 0.3,
+      "maxThemes": 5,
+      "useLLMEnhancement": true
+    }
+  }
+}

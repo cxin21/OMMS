@@ -1,0 +1,13 @@
+{
+  "palaceRef": "global/event/room_default/closet_memory_01KP4MW7G6Q5R0Y3D0A4K371N5Q5Y5_v1",
+  "content": "我昨天在生产环境执行了一个DELETE语句，结果误删了数据 | 这是一个很严重的错误！在生产环境执行DELETE一定要非常小心，建议先备份数据。",
+  "metadata": {
+    "uid": "memory_01KP4MW7G6Q5R0Y3D0A4K371N5Q5Y5",
+    "version": 1,
+    "createdAt": 1776125091334,
+    "updatedAt": 1776125091334,
+    "originalSize": 72,
+    "compressed": false,
+    "encrypted": false
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "@omms-pro/openclaw-plugin",
+  "version": "1.0.0",
+  "description": "OMMS-PRO OpenClaw Plugin - 为 OpenClaw 提供记忆管理能力",
+  "main": "index.ts",
+  "types": "types.ts",
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint . --ext .ts",
+    "test": "vitest"
+  },
+  "keywords": [
+    "openclaw",
+    "plugin",
+    "memory",
+    "ai-assistant",
+    "omms"
+  ],
+  "author": "OMMS-PRO Team",
+  "license": "MIT",
+  "peerDependencies": {
+    "openclaw": ">=1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

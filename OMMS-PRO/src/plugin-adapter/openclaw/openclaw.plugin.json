@@ -1,0 +1,118 @@
+{
+  "id": "omms-pro",
+  "name": "OMMS-PRO",
+  "label": "Open Memory Management System PRO",
+  "description": "OpenClaw 的记忆管理服务插件，提供记忆存储、检索、遗忘、强化等核心功能",
+  "version": "1.0.0",
+  "author": "OMMS-PRO Team",
+  "license": "MIT",
+  "homepage": "https://github.com/OMMS-PRO/OMMS-PRO",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OMMS-PRO/OMMS-PRO.git"
+  },
+  "keywords": [
+    "memory",
+    "ai-assistant",
+    "knowledge-graph",
+    "vector-search",
+    "openclaw-plugin"
+  ],
+  "engines": {
+    "node": ">=22.0.0",
+    "openclaw": ">=1.0.0"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "tools": [
+      {
+        "id": "memory-store",
+        "name": "storeMemory",
+        "description": "存储新的记忆到 OMMS 系统"
+      },
+      {
+        "id": "memory-recall",
+        "name": "recallMemories",
+        "description": "从 OMMS 系统检索记忆"
+      },
+      {
+        "id": "memory-forget",
+        "name": "forgetMemories",
+        "description": "遗忘或删除记忆"
+      },
+      {
+        "id": "memory-reinforce",
+        "name": "reinforceMemories",
+        "description": "强化记忆的重要性"
+      },
+      {
+        "id": "palace-list",
+        "name": "listPalaceHalls",
+        "description": "列出记忆宫殿中的大厅"
+      },
+      {
+        "id": "palace-organize",
+        "name": "organizePalace",
+        "description": "整理记忆宫殿结构"
+      },
+      {
+        "id": "dreaming-trigger",
+        "name": "triggerDreaming",
+        "description": "触发记忆整理（Dreaming）过程"
+      },
+      {
+        "id": "dreaming-status",
+        "name": "getDreamingStatus",
+        "description": "获取记忆整理状态"
+      },
+      {
+        "id": "profile-get",
+        "name": "getUserProfile",
+        "description": "获取用户画像信息"
+      },
+      {
+        "id": "profile-update",
+        "name": "updateUserProfile",
+        "description": "更新用户画像信息"
+      }
+    ],
+    "config": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "dataPath": {
+            "type": "string",
+            "description": "OMMS 数据存储路径",
+            "default": "~/.omms"
+          },
+          "agentId": {
+            "type": "string",
+            "description": "Agent 唯一标识符",
+            "default": "default-agent"
+          },
+          "enableVectorSearch": {
+            "type": "boolean",
+            "description": "是否启用向量搜索",
+            "default": true
+          },
+          "enableGraph": {
+            "type": "boolean",
+            "description": "是否启用知识图谱",
+            "default": true
+          },
+          "logLevel": {
+            "type": "string",
+            "enum": ["debug", "info", "warn", "error"],
+            "description": "日志级别",
+            "default": "info"
+          }
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "openclaw": ">=1.0.0"
+  }
+}

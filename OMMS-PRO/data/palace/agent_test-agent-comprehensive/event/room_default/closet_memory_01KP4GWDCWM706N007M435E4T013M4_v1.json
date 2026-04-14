@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/event/room_default/closet_memory_01KP4GWDCWM706N007M435E4T013M4_v1",
+  "content": "旧邮箱又启用了",
+  "metadata": {
+    "uid": "memory_01KP4GWDCWM706N007M435E4T013M4",
+    "version": 1,
+    "createdAt": 1776120903095,
+    "updatedAt": 1776120903095,
+    "originalSize": 7,
+    "compressed": false,
+    "encrypted": false
+  }
+}

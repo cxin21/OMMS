@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/fact/room_default/closet_memory_01KP4GTSF0P2W4S1T7Z461Z7J5Y2S1_v1",
+  "content": "我住在上海浦东",
+  "metadata": {
+    "uid": "memory_01KP4GTSF0P2W4S1T7Z461Z7J5Y2S1",
+    "version": 1,
+    "createdAt": 1776120849906,
+    "updatedAt": 1776120849906,
+    "originalSize": 7,
+    "compressed": false,
+    "encrypted": false
+  }
+}

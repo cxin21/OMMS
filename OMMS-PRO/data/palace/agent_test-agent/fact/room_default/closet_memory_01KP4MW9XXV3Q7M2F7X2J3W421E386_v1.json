@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent/fact/room_default/closet_memory_01KP4MW9XXV3Q7M2F7X2J3W421E386_v1",
+  "content": "开发 | Go语言在后端开发中越来越流行了！它的并发处理能力很强",
+  "metadata": {
+    "uid": "memory_01KP4MW9XXV3Q7M2F7X2J3W421E386",
+    "version": 1,
+    "createdAt": 1776125093821,
+    "updatedAt": 1776125093821,
+    "originalSize": 32,
+    "compressed": false,
+    "encrypted": false
+  }
+}

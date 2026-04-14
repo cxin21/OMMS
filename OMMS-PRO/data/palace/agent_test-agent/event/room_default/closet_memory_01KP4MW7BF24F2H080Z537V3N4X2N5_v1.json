@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent/event/room_default/closet_memory_01KP4MW7BF24F2H080Z537V3N4X2N5_v1",
+  "content": "今天天气真好 | 是啊，今天天气确实很好！",
+  "metadata": {
+    "uid": "memory_01KP4MW7BF24F2H080Z537V3N4X2N5",
+    "version": 1,
+    "createdAt": 1776125091183,
+    "updatedAt": 1776125091183,
+    "originalSize": 21,
+    "compressed": false,
+    "encrypted": false
+  }
+}

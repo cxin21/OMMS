@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent/decision/room_default/closet_memory_01KP4MW8TH41V30450M243Z745W4G2_v1",
+  "content": "我打算学习机器学习但不知道从哪开始 | 机器学习是个很好的方向！建议从Python基础和scikit-learn库开始学习。",
+  "metadata": {
+    "uid": "memory_01KP4MW8TH41V30450M243Z745W4G2",
+    "version": 1,
+    "createdAt": 1776125092689,
+    "updatedAt": 1776125092689,
+    "originalSize": 62,
+    "compressed": false,
+    "encrypted": false
+  }
+}

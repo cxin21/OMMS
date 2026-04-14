@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent/learning/room_default/closet_memory_01KP4MWADA6510P3608351N5Y7X522_v1",
+  "content": "我决定不参加QCon大会了，因为时间冲突 | 理解，时间安排确实重要。以后还有机会参加其他大会的。",
+  "metadata": {
+    "uid": "memory_01KP4MWADA6510P3608351N5Y7X522",
+    "version": 1,
+    "createdAt": 1776125094314,
+    "updatedAt": 1776125094314,
+    "originalSize": 49,
+    "compressed": false,
+    "encrypted": false
+  }
+}

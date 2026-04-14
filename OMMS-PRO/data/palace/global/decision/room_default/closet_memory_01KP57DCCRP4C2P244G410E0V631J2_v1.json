@@ -1,0 +1,13 @@
+{
+  "palaceRef": "global/decision/room_default/closet_memory_01KP57DCCRP4C2P244G410E0V631J2_v1",
+  "content": "决定使用 React + Vite 来重构前端项目，因为开发体验更好",
+  "metadata": {
+    "uid": "memory_01KP57DCCRP4C2P244G410E0V631J2",
+    "version": 1,
+    "createdAt": 1776144527768,
+    "updatedAt": 1776144527768,
+    "originalSize": 34,
+    "compressed": false,
+    "encrypted": false
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "palaceRef": "agent_test-agent-comprehensive/identity/room_default/closet_memory_01KP4GVD4GE3H4G4H5K1J2M7C6N6A4_v1",
+  "content": "我的新邮箱是 new_email@test.com",
+  "metadata": {
+    "uid": "memory_01KP4GVD4GE3H4G4H5K1J2M7C6N6A4",
+    "version": 1,
+    "createdAt": 1776120870039,
+    "updatedAt": 1776120870039,
+    "originalSize": 25,
+    "compressed": false,
+    "encrypted": false
+  }
+}
